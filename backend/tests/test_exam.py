@@ -1,0 +1,213 @@
+"""
+Exam service unit tests + router integration tests.
+No Postgres required — DB session is fully mocked.
+"""
+import uuid
+from datetime import UTC, datetime, timedelta
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
+
+import pytest
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+
+from app.database import get_db
+from app.deps import get_current_user
+from app.main import app
+from app.models.exam import Exam
+from app.models.exam_assignment import ExamAssignment
+from app.models.user import User
+from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
+from app.services.auth import hash_password
+from app.services.exam import (
+    create_assignment,
+    create_exam,
+    delete_exam,
+    get_exam,
+    list_exams,
+    update_exam,
+)
+
+
+# ── factories ─────────────────────────────────────────────────────────────────
+
+def _make_user(role: str = "interviewer") -> User:
+    u = User()
+    u.user_id = uuid.uuid4()
+    u.name = "Test"
+    u.email = "test@example.com"
+    u.password_hash = hash_password("secret")
+    u.role = role
+    return u
+
+
+def _make_exam(title: str = "Test Exam") -> Exam:
+    e = Exam()
+    e.exam_id = uuid.uuid4()
+    e.title = title
+    e.description = None
+    e.start_time = datetime.now(UTC)
+    e.end_time = datetime.now(UTC) + timedelta(hours=2)
+    e.show_score = False
+    e.created_by = uuid.uuid4()
+    e.created_at = datetime.now(UTC)
+    return e
+
+
+def _make_assignment(exam_id: uuid.UUID, candidate_id: uuid.UUID, problem_id: uuid.UUID) -> ExamAssignment:
+    a = ExamAssignment()
+    a.assignment_id = uuid.uuid4()
+    a.exam_id = exam_id
+    a.candidate_id = candidate_id
+    a.problem_id = problem_id
+    a.assigned_difficulty = None
+    a.created_at = datetime.now(UTC)
+    return a
+
+
+def _mock_db(rows=None):
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = iter(rows or [])
+    mock_result.scalar_one_or_none.return_value = None
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=mock_result)
+    db.get = AsyncMock(return_value=None)
+    db.add = MagicMock()
+    db.delete = AsyncMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+    db.rollback = AsyncMock()
+    return db
+
+
+# ── service: list / get ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_list_exams_returns_all_for_interviewer():
+    exams = [_make_exam("A"), _make_exam("B")]
+    db = _mock_db(exams)
+    result = await list_exams(db, uuid.uuid4(), "interviewer")
+    assert result == exams
+
+
+@pytest.mark.asyncio
+async def test_get_exam_not_found_raises_404():
+    db = _mock_db()
+    db.get = AsyncMock(return_value=None)
+    with pytest.raises(HTTPException) as exc:
+        await get_exam(db, uuid.uuid4())
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_exam_found():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result = await get_exam(db, exam.exam_id)
+    assert result is exam
+
+
+# ── service: create / update ───────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_create_exam_commits_and_returns():
+    db = _mock_db()
+    creator_id = uuid.uuid4()
+    data = ExamCreate(
+        title="Sprint 1",
+        start_time=datetime.now(UTC),
+        end_time=datetime.now(UTC) + timedelta(hours=1),
+    )
+    exam = await create_exam(db, data, creator_id)
+    db.add.assert_called_once()
+    db.commit.assert_awaited_once()
+    assert exam.title == "Sprint 1"
+    assert exam.created_by == creator_id
+
+
+@pytest.mark.asyncio
+async def test_update_exam_applies_fields():
+    exam = _make_exam("Old Title")
+    db = _mock_db()
+    db.refresh = AsyncMock(side_effect=lambda obj: None)
+    updated = await update_exam(db, exam, ExamUpdate(title="New Title"))
+    assert updated.title == "New Title"
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_exam_commits():
+    exam = _make_exam()
+    db = _mock_db()
+    await delete_exam(db, exam)
+    db.delete.assert_awaited_once_with(exam)
+    db.commit.assert_awaited_once()
+
+
+# ── service: assignment ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_create_assignment_commits_and_returns():
+    db = _mock_db()
+    exam_id = uuid.uuid4()
+    data = ExamAssignmentCreate(
+        candidate_id=uuid.uuid4(),
+        problem_id=uuid.uuid4(),
+    )
+    assignment = await create_assignment(db, exam_id, data)
+    db.add.assert_called_once()
+    db.commit.assert_awaited_once()
+    assert assignment.exam_id == exam_id
+    assert assignment.candidate_id == data.candidate_id
+
+
+# ── router integration ─────────────────────────────────────────────────────────
+
+def _client_for(user: User):
+    async def override_db():
+        yield AsyncMock()
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = override_db
+    return TestClient(app)
+
+
+def _clear_overrides():
+    app.dependency_overrides.clear()
+
+
+@patch("app.routers.exam.exam_service.create_exam", new_callable=AsyncMock)
+def test_candidate_gets_403_on_create_exam(mock_create):
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.post(
+            "/api/v1/exams",
+            json={
+                "title": "X",
+                "start_time": datetime.now(UTC).isoformat(),
+                "end_time": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            },
+        )
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 403
+    mock_create.assert_not_called()
+
+
+@patch("app.routers.exam.exam_service.list_exams", new_callable=AsyncMock)
+def test_list_exams_returns_200(mock_list):
+    exam = _make_exam()
+    mock_list.return_value = [exam]
+    interviewer = _make_user("interviewer")
+    client = _client_for(interviewer)
+    try:
+        resp = client.get("/api/v1/exams")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["title"] == exam.title

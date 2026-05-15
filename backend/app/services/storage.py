@@ -33,3 +33,10 @@ def put_object(key: str, data: bytes, content_type: str = "application/octet-str
 
 def delete_object(key: str) -> None:
     get_minio().remove_object(settings.MINIO_BUCKET, key)
+
+
+def presigned_get_url(key: str, expires_seconds: int = 3600) -> str:
+    from datetime import timedelta
+    return get_minio().presigned_get_object(
+        settings.MINIO_BUCKET, key, expires=timedelta(seconds=expires_seconds)
+    )
