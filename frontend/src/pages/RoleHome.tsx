@@ -2,9 +2,9 @@ import { Navigate } from 'react-router-dom'
 import { useAuthContext } from '../contexts/AuthContext'
 
 const ROLE_ROUTES: Record<string, string> = {
-  candidate:     '/dashboard',
-  interviewer:   '/interviewer',
-  problem_admin: '/interviewer',
+  candidate:     '/exams',
+  interviewer:   '/exams',
+  problem_admin: '/problems',
   admin:         '/admin/users',
 }
 
