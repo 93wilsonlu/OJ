@@ -1,6 +1,7 @@
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -89,8 +90,9 @@ async def create_test_case(
     expected_file: UploadFile,
     is_hidden: bool = Form(True),
     score_weight: float = Form(1.0),
-    time_limit_override: int | None = Form(None),
-    memory_limit_override: int | None = Form(None),
+    name: Optional[str] = Form(None),
+    time_limit_override: Optional[int] = Form(None),
+    memory_limit_override: Optional[int] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -100,7 +102,33 @@ async def create_test_case(
     expected_bytes = await expected_file.read()
     tc = await problem_service.create_test_case(
         db, problem_id, input_bytes, expected_bytes, is_hidden, score_weight,
+        name, time_limit_override, memory_limit_override,
+    )
+    return TestCaseOut.model_validate(tc)
+
+
+@router.patch("/{problem_id}/test-cases/{testcase_id}", response_model=TestCaseOut)
+async def update_test_case(
+    problem_id: uuid.UUID,
+    testcase_id: uuid.UUID,
+    is_hidden: bool = Form(...),
+    score_weight: float = Form(...),
+    name: Optional[str] = Form(None),
+    time_limit_override: Optional[int] = Form(None),
+    memory_limit_override: Optional[int] = Form(None),
+    input_file: Optional[UploadFile] = File(None),
+    expected_file: Optional[UploadFile] = File(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, *_WRITE_ROLES)
+    tc = await problem_service.get_test_case(db, problem_id, testcase_id)
+    input_bytes = await input_file.read() if input_file else None
+    expected_bytes = await expected_file.read() if expected_file else None
+    tc = await problem_service.update_test_case(
+        db, tc, is_hidden, score_weight, name,
         time_limit_override, memory_limit_override,
+        input_bytes, expected_bytes,
     )
     return TestCaseOut.model_validate(tc)
 

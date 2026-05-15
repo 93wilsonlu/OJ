@@ -52,6 +52,7 @@ class ProblemOut(BaseModel):
 class TestCaseOut(BaseModel):
     testcase_id: uuid.UUID
     problem_id: uuid.UUID
+    name: str | None
     is_hidden: bool
     score_weight: float
     time_limit_override: int | None

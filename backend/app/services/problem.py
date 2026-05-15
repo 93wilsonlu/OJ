@@ -109,6 +109,7 @@ async def create_test_case(
     expected_bytes: bytes,
     is_hidden: bool,
     score_weight: float,
+    name: str | None = None,
     time_limit_override: int | None = None,
     memory_limit_override: int | None = None,
 ) -> TestCase:
@@ -126,10 +127,36 @@ async def create_test_case(
         expected_output_key=expected_key,
         is_hidden=is_hidden,
         score_weight=score_weight,
+        name=name or None,
         time_limit_override=time_limit_override,
         memory_limit_override=memory_limit_override,
     )
     db.add(tc)
+    await db.commit()
+    await db.refresh(tc)
+    return tc
+
+
+async def update_test_case(
+    db: AsyncSession,
+    tc: TestCase,
+    is_hidden: bool,
+    score_weight: float,
+    name: str | None,
+    time_limit_override: int | None,
+    memory_limit_override: int | None,
+    input_bytes: bytes | None = None,
+    expected_bytes: bytes | None = None,
+) -> TestCase:
+    tc.is_hidden = is_hidden
+    tc.score_weight = score_weight
+    tc.name = name or None
+    tc.time_limit_override = time_limit_override
+    tc.memory_limit_override = memory_limit_override
+    if input_bytes is not None:
+        storage.put_object(tc.input_data_key, input_bytes)
+    if expected_bytes is not None:
+        storage.put_object(tc.expected_output_key, expected_bytes)
     await db.commit()
     await db.refresh(tc)
     return tc

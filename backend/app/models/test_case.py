@@ -20,6 +20,7 @@ class TestCase(Base):
     expected_output_key: Mapped[str] = mapped_column(String, nullable=False)
     is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     score_weight: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=1.0)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
     # Per-test-case overrides; None means inherit the problem-level limit
     time_limit_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
     memory_limit_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
