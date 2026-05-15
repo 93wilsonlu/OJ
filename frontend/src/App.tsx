@@ -1,16 +1,36 @@
+import type { ReactNode } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import AppShell from './components/AppShell'
 import RequireAuth from './components/RequireAuth'
 import Login from './pages/Login'
 import RoleHome from './pages/RoleHome'
 import NotFound from './pages/NotFound'
 import ErrorPage from './pages/ErrorPage'
+import type { UserOut } from './types/auth'
 
-// Stub placeholders — replaced in later phases
-function CandidateDashboard() { return <div className="p-8 text-oj-fg font-mono">Candidate Dashboard (Phase 4)</div> }
-function InterviewerDashboard() { return <div className="p-8 text-oj-fg font-mono">Interviewer Dashboard (Phase 6)</div> }
-function AdminDashboard() { return <div className="p-8 text-oj-fg font-mono">Admin Dashboard (Phase 6)</div> }
-function UserManagement() { return <div className="p-8 text-oj-fg font-mono">User Management (Phase 6)</div> }
+// ── stub placeholders — replaced in later phases ──────────────────────────────
+function Stub({ label }: { label: string }) {
+  return <div className="p-8 text-oj-fg font-mono text-sm text-oj-fg-muted">{label}</div>
+}
+
+// ── layout helper ─────────────────────────────────────────────────────────────
+
+function Protected({
+  children,
+  roles,
+}: {
+  children: ReactNode
+  roles?: UserOut['role'][]
+}) {
+  return (
+    <RequireAuth roles={roles}>
+      <AppShell>{children}</AppShell>
+    </RequireAuth>
+  )
+}
+
+// ── routes ────────────────────────────────────────────────────────────────────
 
 export default function App() {
   return (
@@ -20,7 +40,7 @@ export default function App() {
           {/* Public */}
           <Route path="/login" element={<Login />} />
 
-          {/* Role-based home redirect */}
+          {/* Role-based home redirect — no shell needed (pure redirect) */}
           <Route
             path="/"
             element={
@@ -30,49 +50,66 @@ export default function App() {
             }
           />
 
-          {/* Candidate routes */}
+          {/* Candidate */}
+          <Route
+            path="/exams"
+            element={
+              <Protected roles={['candidate', 'interviewer']}>
+                <Stub label="Exams (Phase 5)" />
+              </Protected>
+            }
+          />
           <Route
             path="/dashboard"
             element={
-              <RequireAuth roles={['candidate']}>
-                <CandidateDashboard />
-              </RequireAuth>
+              <Protected roles={['candidate']}>
+                <Stub label="Candidate Dashboard (Phase 5)" />
+              </Protected>
             }
           />
 
-          {/* Interviewer + problem_admin + admin routes */}
+          {/* Problem admin + admin */}
+          <Route
+            path="/problems"
+            element={
+              <Protected roles={['problem_admin', 'admin']}>
+                <Stub label="Problems (Phase 5)" />
+              </Protected>
+            }
+          />
+
+          {/* Interviewer */}
           <Route
             path="/interviewer"
             element={
-              <RequireAuth roles={['interviewer', 'problem_admin', 'admin']}>
-                <InterviewerDashboard />
-              </RequireAuth>
+              <Protected roles={['interviewer', 'problem_admin', 'admin']}>
+                <Stub label="Interviewer Dashboard (Phase 7)" />
+              </Protected>
             }
           />
 
-          {/* Admin-only routes */}
-          <Route
-            path="/admin"
-            element={
-              <RequireAuth roles={['admin', 'interviewer']}>
-                <AdminDashboard />
-              </RequireAuth>
-            }
-          />
+          {/* Admin */}
           <Route
             path="/admin/users"
             element={
-              <RequireAuth roles={['admin']}>
-                <UserManagement />
-              </RequireAuth>
+              <Protected roles={['admin']}>
+                <Stub label="User Management (Phase 7)" />
+              </Protected>
             }
           />
 
-          {/* Error pages */}
-          <Route path="/403" element={<ErrorPage status={403} />} />
-          <Route path="/500" element={<ErrorPage status={500} />} />
+          {/* 403 — inside shell so user can navigate away */}
+          <Route
+            path="/403"
+            element={
+              <Protected>
+                <ErrorPage status={403} />
+              </Protected>
+            }
+          />
 
-          {/* 404 catch-all */}
+          {/* Bare error/404 — user may not be authenticated */}
+          <Route path="/500" element={<ErrorPage status={500} />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </AuthProvider>

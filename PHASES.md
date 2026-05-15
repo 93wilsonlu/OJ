@@ -1,7 +1,7 @@
 # Implementation Phases
 
-> Execution order follows dependency and risk. Phase 5 (Judge Worker) carries the most
-> uncertainty — consider a Docker/isolate spike at the start of Phase 4 in parallel.
+> Execution order follows dependency and risk. Phase 6 (Judge Worker) carries the most
+> uncertainty — consider a Docker/isolate spike at the start of Phase 5 in parallel.
 
 ---
 
@@ -48,7 +48,25 @@
 
 ---
 
-## Phase 4 — Exam Management & Submission Intake
+## Phase 4 — App Shell & Navigation
+
+**Goal:** Every authenticated page has a working navbar with logout and role-appropriate navigation. The app is navigable end-to-end before domain pages are built.
+
+- `AppShell.tsx` — top navbar wrapping all authenticated routes; replaces per-page layout
+- Navbar content: app logo/name, role badge, current user name, logout button
+- Role-based nav links:
+  - `admin` → User Management
+  - `problem_admin` → Problems
+  - `interviewer` → Exams (placeholder until Phase 5)
+  - `candidate` → My Exams (placeholder until Phase 5)
+- `useAuth().logout()` wired to the logout button (calls `POST /auth/logout`, clears token, redirects to `/login`)
+- Stub placeholder pages remain for routes not yet implemented; they render inside the shell
+
+**Verify:** Log in as each role → correct nav links appear; logout button clears session and redirects to `/login`; back-button after logout stays on `/login`; 403 page renders inside the shell.
+
+---
+
+## Phase 5 — Exam Management & Submission Intake
 
 **Goal:** Interviewer can create an exam and assign problems/candidates. Candidate can submit code.
 
@@ -62,7 +80,7 @@
 
 ---
 
-## Phase 5 — Judge Worker ⚠️ Highest Risk
+## Phase 6 — Judge Worker ⚠️ Highest Risk
 
 **Goal:** Submitted code gets judged by isolate; verdict appears in DB.
 
@@ -79,7 +97,7 @@
 
 ---
 
-## Phase 6 — Reporting, Admin, & Observability
+## Phase 7 — Reporting, Admin, & Observability
 
 **Goal:** Interviewers see scores; admin manages users; logs/metrics are structured.
 
