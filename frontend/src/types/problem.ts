@@ -34,6 +34,7 @@ export type ProblemUpdate = Partial<ProblemCreate>
 export interface TestCase {
   testcase_id: string
   problem_id: string
+  name: string | null
   is_hidden: boolean
   score_weight: number
   time_limit_override: number | null

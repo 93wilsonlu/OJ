@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   apiCreateProblem,
@@ -8,6 +8,7 @@ import {
   apiGetProblem,
   apiListTestCases,
   apiUpdateProblem,
+  apiUpdateTestCase,
 } from '../api/problems'
 import { useAuth } from '../hooks/useAuth'
 import type { Difficulty, Problem, TestCase } from '../types/problem'
@@ -190,50 +191,92 @@ function ProblemForm({
   )
 }
 
-// ── Add test case form ────────────────────────────────────────────────────────
+// ── Test case form (add + edit) ───────────────────────────────────────────────
 
-function AddTestCaseForm({
+interface TestCaseFormInitial {
+  name: string | null
+  isHidden: boolean
+  scoreWeight: number
+  timeLimitOverride: number | null
+  memoryLimitOverride: number | null
+}
+
+function TestCaseForm({
   token,
   problemId,
-  onAdded,
+  testcaseId,
+  initial,
+  defaultName,
+  onSaved,
+  onCancel,
 }: {
   token: string
   problemId: string
-  onAdded: (tc: TestCase) => void
+  testcaseId?: string
+  initial?: TestCaseFormInitial
+  defaultName?: string
+  onSaved: (tc: TestCase) => void
+  onCancel?: () => void
 }) {
+  const isEdit = !!testcaseId
   const [inputFile, setInputFile] = useState<File | null>(null)
   const [expectedFile, setExpectedFile] = useState<File | null>(null)
-  const [isHidden, setIsHidden] = useState(true)
-  const [scoreWeight, setScoreWeight] = useState(1.0)
-  const [timeLimitOverride, setTimeLimitOverride] = useState('')
-  const [memoryLimitOverride, setMemoryLimitOverride] = useState('')
-  const [uploading, setUploading] = useState(false)
+  const [name, setName] = useState(initial?.name ?? defaultName ?? '')
+  const [isHidden, setIsHidden] = useState(initial?.isHidden ?? true)
+  const [scoreWeight, setScoreWeight] = useState(String(initial?.scoreWeight ?? 1.0))
+  const [timeLimitOverride, setTimeLimitOverride] = useState(
+    initial?.timeLimitOverride != null ? String(initial.timeLimitOverride) : ''
+  )
+  const [memoryLimitOverride, setMemoryLimitOverride] = useState(
+    initial?.memoryLimitOverride != null ? String(initial.memoryLimitOverride) : ''
+  )
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function handleUpload(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!inputFile || !expectedFile) { setError('Both files are required.'); return }
-    setUploading(true)
+    if (!isEdit && (!inputFile || !expectedFile)) {
+      setError('Both files are required.')
+      return
+    }
+    setSaving(true)
     setError(null)
     try {
-      const tc = await apiCreateTestCase(token, problemId, {
-        inputFile,
-        expectedFile,
-        isHidden,
-        scoreWeight,
+      const overrides = {
+        name: name.trim() || null,
         timeLimitOverride: timeLimitOverride ? Number(timeLimitOverride) : null,
         memoryLimitOverride: memoryLimitOverride ? Number(memoryLimitOverride) : null,
-      })
-      onAdded(tc)
-      setInputFile(null)
-      setExpectedFile(null)
-      setScoreWeight(1.0)
-      setTimeLimitOverride('')
-      setMemoryLimitOverride('')
+      }
+      let tc: TestCase
+      if (isEdit) {
+        tc = await apiUpdateTestCase(token, problemId, testcaseId!, {
+          isHidden,
+          scoreWeight: Number(scoreWeight),
+          ...overrides,
+          inputFile,
+          expectedFile,
+        })
+      } else {
+        tc = await apiCreateTestCase(token, problemId, {
+          inputFile: inputFile!,
+          expectedFile: expectedFile!,
+          isHidden,
+          scoreWeight: Number(scoreWeight),
+          ...overrides,
+        })
+        setInputFile(null)
+        setExpectedFile(null)
+        setName('')
+        setScoreWeight('1')
+        setTimeLimitOverride('')
+        setMemoryLimitOverride('')
+        setIsHidden(true)
+      }
+      onSaved(tc)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed')
+      setError(e instanceof Error ? e.message : 'Save failed')
     } finally {
-      setUploading(false)
+      setSaving(false)
     }
   }
 
@@ -241,28 +284,40 @@ function AddTestCaseForm({
                     text-sm text-oj-fg focus:outline-none focus:ring-1 focus:ring-oj-accent`
 
   return (
-    <form onSubmit={handleUpload} className="mt-4 p-4 rounded-lg border border-dashed border-oj-border space-y-3">
-      <h3 className="text-xs font-semibold text-oj-fg-muted uppercase tracking-wide">Add Test Case</h3>
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <label className="block">
+        <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Name</span>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className={`${inputCls} w-full`}
+        />
+      </label>
 
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Input file *</span>
+          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">
+            Input file {isEdit ? '(leave blank to keep)' : '*'}
+          </span>
           <input
             type="file"
-            required
+            required={!isEdit}
             onChange={(e) => setInputFile(e.target.files?.[0] ?? null)}
-            className="text-sm text-oj-fg-muted file:mr-2 file:px-2 file:py-1 file:rounded
+            className="w-full text-sm text-oj-fg-muted file:mr-2 file:px-2 file:py-1 file:rounded
                        file:border-0 file:bg-oj-surface2 file:text-oj-fg-muted file:text-xs
                        file:cursor-pointer cursor-pointer"
           />
         </label>
         <label className="block">
-          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Expected output file *</span>
+          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">
+            Expected output file {isEdit ? '(leave blank to keep)' : '*'}
+          </span>
           <input
             type="file"
-            required
+            required={!isEdit}
             onChange={(e) => setExpectedFile(e.target.files?.[0] ?? null)}
-            className="text-sm text-oj-fg-muted file:mr-2 file:px-2 file:py-1 file:rounded
+            className="w-full text-sm text-oj-fg-muted file:mr-2 file:px-2 file:py-1 file:rounded
                        file:border-0 file:bg-oj-surface2 file:text-oj-fg-muted file:text-xs
                        file:cursor-pointer cursor-pointer"
           />
@@ -273,7 +328,7 @@ function AddTestCaseForm({
         <label className="block">
           <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Score weight</span>
           <input type="number" min={0} step={0.1} value={scoreWeight}
-            onChange={(e) => setScoreWeight(Number(e.target.value))} className={`${inputCls} w-full`} />
+            onChange={(e) => setScoreWeight(e.target.value)} className={`${inputCls} w-full`} />
         </label>
         <label className="block">
           <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Time limit (ms)</span>
@@ -293,17 +348,79 @@ function AddTestCaseForm({
 
       {error && <p className="text-red-400 text-xs font-mono">{error}</p>}
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2 pt-1">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 rounded-md text-sm text-oj-fg-muted hover:text-oj-fg
+                       hover:bg-oj-surface2 transition-colors"
+          >
+            Cancel
+          </button>
+        )}
         <button
           type="submit"
-          disabled={uploading}
+          disabled={saving}
           className="px-3 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
                      hover:bg-oj-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {uploading ? 'Uploading…' : 'Upload'}
+          {saving ? (isEdit ? 'Saving…' : 'Uploading…') : (isEdit ? 'Save changes' : 'Upload')}
         </button>
       </div>
     </form>
+  )
+}
+
+// ── Test case modal (add + edit) ──────────────────────────────────────────────
+
+function TestCaseModal({
+  title,
+  token,
+  problemId,
+  testcaseId,
+  initial,
+  defaultName,
+  onSaved,
+  onClose,
+}: {
+  title: string
+  token: string
+  problemId: string
+  testcaseId?: string
+  initial?: TestCaseFormInitial
+  defaultName?: string
+  onSaved: (tc: TestCase) => void
+  onClose: () => void
+}) {
+  const backdropRef = useRef<HTMLDivElement>(null)
+  return (
+    <div
+      ref={backdropRef}
+      onClick={(e) => { if (e.target === backdropRef.current) onClose() }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full max-w-xl bg-oj-surface border border-oj-border rounded-xl shadow-xl
+                      max-h-[90dvh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-oj-border">
+          <h2 className="text-base font-semibold text-oj-fg">{title}</h2>
+          <button onClick={onClose} aria-label="Close" className="text-oj-fg-muted hover:text-oj-fg">✕</button>
+        </div>
+        <div className="px-5 py-4">
+          <TestCaseForm
+            token={token}
+            problemId={problemId}
+            testcaseId={testcaseId}
+            initial={initial}
+            defaultName={defaultName}
+            onSaved={(tc) => { onSaved(tc); onClose() }}
+            onCancel={onClose}
+          />
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -315,6 +432,7 @@ function TestCaseList({
   problemId,
   problemTimeLimitMs,
   problemMemoryMb,
+  onUpdated,
   onDeleted,
 }: {
   testcases: TestCase[]
@@ -322,8 +440,11 @@ function TestCaseList({
   problemId: string
   problemTimeLimitMs: number
   problemMemoryMb: number
+  onUpdated: (tc: TestCase) => void
   onDeleted: (id: string) => void
 }) {
+  const [editingEntry, setEditingEntry] = useState<{ tc: TestCase; index: number } | null>(null)
+
   async function handleDelete(tc: TestCase) {
     if (!confirm('Delete this test case?')) return
     try {
@@ -339,51 +460,84 @@ function TestCaseList({
   }
 
   return (
-    <div className="mt-3 overflow-x-auto rounded-lg border border-oj-border">
-      <table className="w-full text-xs font-mono">
-        <thead>
-          <tr className="border-b border-oj-border bg-oj-surface/50">
-            <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">#</th>
-            <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Hidden</th>
-            <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Weight</th>
-            <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Time (ms)</th>
-            <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Memory (MB)</th>
-            <th className="px-3 py-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {testcases.map((tc, i) => (
-            <tr key={tc.testcase_id} className="border-b border-oj-border last:border-0 hover:bg-oj-surface/40">
-              <td className="px-3 py-2 text-oj-fg-muted">{i + 1}</td>
-              <td className="px-3 py-2">
-                <span className={tc.is_hidden ? 'text-amber-300' : 'text-oj-fg-muted'}>
-                  {tc.is_hidden ? 'hidden' : 'visible'}
-                </span>
-              </td>
-              <td className="px-3 py-2 text-oj-fg">{tc.score_weight}</td>
-              <td className="px-3 py-2 text-oj-fg">
-                {tc.time_limit_override !== null
-                  ? <span className="text-oj-accent">{tc.time_limit_override}</span>
-                  : <span className="text-oj-fg-muted">{problemTimeLimitMs} (default)</span>}
-              </td>
-              <td className="px-3 py-2 text-oj-fg">
-                {tc.memory_limit_override !== null
-                  ? <span className="text-oj-accent">{tc.memory_limit_override}</span>
-                  : <span className="text-oj-fg-muted">{problemMemoryMb} (default)</span>}
-              </td>
-              <td className="px-3 py-2 text-right">
-                <button
-                  onClick={() => handleDelete(tc)}
-                  className="text-red-400/70 hover:text-red-400 transition-colors"
-                >
-                  Delete
-                </button>
-              </td>
+    <>
+      <div className="mt-3 rounded-lg border border-oj-border overflow-hidden">
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="border-b border-oj-border bg-oj-surface/50">
+              <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">#</th>
+              <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Name</th>
+              <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Hidden</th>
+              <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Weight</th>
+              <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Time (ms)</th>
+              <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Memory (MB)</th>
+              <th className="px-3 py-2" />
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {testcases.map((tc, i) => (
+              <tr key={tc.testcase_id} className="border-b border-oj-border last:border-0 hover:bg-oj-surface/40">
+                <td className="px-3 py-2 text-oj-fg-muted">{i + 1}</td>
+                <td className="px-3 py-2 text-oj-fg max-w-[12rem] truncate">
+                  {tc.name ?? <span className="text-oj-fg-muted">Testcase #{i + 1}</span>}
+                </td>
+                <td className="px-3 py-2">
+                  <span className={tc.is_hidden ? 'text-amber-300' : 'text-oj-fg-muted'}>
+                    {tc.is_hidden ? 'hidden' : 'visible'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-oj-fg">{tc.score_weight}</td>
+                <td className="px-3 py-2 text-oj-fg">
+                  {tc.time_limit_override !== null
+                    ? <span className="text-oj-accent">{tc.time_limit_override}</span>
+                    : <span className="text-oj-fg-muted">{problemTimeLimitMs} (default)</span>}
+                </td>
+                <td className="px-3 py-2 text-oj-fg">
+                  {tc.memory_limit_override !== null
+                    ? <span className="text-oj-accent">{tc.memory_limit_override}</span>
+                    : <span className="text-oj-fg-muted">{problemMemoryMb} (default)</span>}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      onClick={() => setEditingEntry({ tc, index: i + 1 })}
+                      className="text-oj-accent/70 hover:text-oj-accent transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(tc)}
+                      className="text-red-400/70 hover:text-red-400 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editingEntry && (
+        <TestCaseModal
+          title={editingEntry.tc.name ?? `Testcase #${editingEntry.index}`}
+          token={token}
+          problemId={problemId}
+          testcaseId={editingEntry.tc.testcase_id}
+          initial={{
+            name: editingEntry.tc.name,
+            isHidden: editingEntry.tc.is_hidden,
+            scoreWeight: editingEntry.tc.score_weight,
+            timeLimitOverride: editingEntry.tc.time_limit_override,
+            memoryLimitOverride: editingEntry.tc.memory_limit_override,
+          }}
+          defaultName={editingEntry.tc.name ?? `Testcase #${editingEntry.index}`}
+          onSaved={onUpdated}
+          onClose={() => setEditingEntry(null)}
+        />
+      )}
+    </>
   )
 }
 
@@ -396,6 +550,7 @@ export default function ProblemDetailPage() {
   const isNew = problemId === 'new'
 
   const [problem, setProblem] = useState<Problem | null>(null)
+  const [showAddTC, setShowAddTC] = useState(false)
   const [testcases, setTestcases] = useState<TestCase[]>([])
   const [loading, setLoading] = useState(!isNew)
   const [error, setError] = useState<string | null>(null)
@@ -507,25 +662,43 @@ export default function ProblemDetailPage() {
       )}
 
       <section>
-        <h2 className="text-sm font-semibold text-oj-fg-muted uppercase tracking-wide mb-1">
-          Test Cases ({testcases.length})
-        </h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold text-oj-fg-muted uppercase tracking-wide">
+            Test Cases ({testcases.length})
+          </h2>
+          {canWrite && (
+            <button
+              onClick={() => setShowAddTC(true)}
+              className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium
+                         bg-oj-accent text-oj-bg hover:bg-oj-accent/90 transition-colors"
+            >
+              <span aria-hidden>+</span> Add Test Case
+            </button>
+          )}
+        </div>
         <TestCaseList
           testcases={testcases}
           token={token}
           problemId={problem.problem_id}
           problemTimeLimitMs={problem.time_limit}
           problemMemoryMb={problem.memory_limit}
+          onUpdated={(updated) =>
+            setTestcases((prev) => prev.map((tc) => tc.testcase_id === updated.testcase_id ? updated : tc))
+          }
           onDeleted={(id) => setTestcases((prev) => prev.filter((tc) => tc.testcase_id !== id))}
         />
-        {canWrite && (
-          <AddTestCaseForm
-            token={token}
-            problemId={problem.problem_id}
-            onAdded={(tc) => setTestcases((prev) => [...prev, tc])}
-          />
-        )}
       </section>
+
+      {showAddTC && (
+        <TestCaseModal
+          title="Add Test Case"
+          token={token}
+          problemId={problem.problem_id}
+          defaultName={`Testcase #${testcases.length + 1}`}
+          onSaved={(tc) => setTestcases((prev) => [...prev, tc])}
+          onClose={() => setShowAddTC(false)}
+        />
+      )}
     </div>
   )
 }
