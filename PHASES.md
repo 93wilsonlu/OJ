@@ -116,6 +116,7 @@
 - `worker.py` (RQ job entry point) + `runner.py` (isolate invocation + result parsing)
 - Python 3 runner + C++17 runner (compile → run)
 - Verdict computation (first non-AC test case wins), score, `passed_count`; respects per-test-case `time_limit_override` / `memory_limit_override`
+- Partial scoring: candidate earns proportional credit for passing k of n test cases (weighted by `score_weight`)
 - Idempotency guard on `judge_results` INSERT
 - 3-retry with 30/90/270s backoff → `System Error` after exhaustion
 - Log upload to MinIO
@@ -135,5 +136,28 @@
 - Signed MinIO URL (`code_url`, 1h TTL) for "View Code" button
 - Frontend: `InterviewerDashboard.tsx` (results table + filters), `AdminDashboard.tsx` (stats)
 - structlog JSON output + Prometheus `/metrics` endpoint
+- Per-problem statistics: pass rate, average solve time, common wrong-answer test case distribution
+- Export exam results as CSV (per-candidate scores + verdicts per problem)
+- Plagiarism similarity score: token-based diff between submissions within the same exam, flagging suspiciously similar code
 
 **Verify:** All success criteria in SPEC.md pass; `docker compose up -d` from scratch boots the full stack with no manual steps.
+
+---
+
+## Phase 10 — UX Polish & Advanced Features
+
+**Goal:** Elevate the day-to-day experience for all roles with the features most requested after initial launch.
+
+**Problem management:**
+- Search/filter bar on the problems list (by title, difficulty, language)
+- Problem tags/categories (e.g. "graph", "dp", "string") — tag model, many-to-many, filterable in the list and assignable in the editor
+- Markdown + LaTeX rendering for problem descriptions (`react-markdown` + KaTeX)
+- Pagination on the problems list (backend `limit`/`offset`; frontend page controls)
+
+**Exam & candidate experience:**
+- Scheduled exams with auto-open/close by time (`start_time` / `end_time` enforced server-side; exam not visible before start)
+- Email invitations sent to candidates when assigned to an exam
+- Countdown timer visible in `ExamView` (time remaining until `end_time`)
+- Toast notification when submission verdict arrives instead of requiring the candidate to stay on the status page
+- Monaco or CodeMirror editor in `ProblemEditor` for syntax highlighting
+- View past submission history per problem (list of prior attempts with verdict and timestamp)

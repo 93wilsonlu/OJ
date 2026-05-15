@@ -4,7 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository status
 
-This repository is currently **design-phase only**. The single source file is `G7-Architecture Design.md` — a Traditional-Chinese architecture spec for an online coding-test / interview judging system ("Online Code Test System"). There is no source code, build system, or test suite yet. Do not invent build/lint/test commands; if asked to "run tests" or "build", note that nothing is implemented and ask which component to scaffold first.
+**Phases 1–6 are implemented and running.** The stack is live via `docker compose up`. Implementation phase tracker: `PHASES.md`.
+
+- **Phase 1** — Docker Compose, Nginx, FastAPI app factory, Alembic migrations, MinIO bucket
+- **Phase 2** — Auth (JWT + refresh tokens), role guards, seeded admin, React login + AuthContext
+- **Phase 3** — Problem + TestCase CRUD backend; hidden test case filtering; MinIO file storage
+- **Phase 4** — App shell, navbar, role-based nav, logout
+- **Phase 5** — Exam management + submission intake (POST /submissions → RQ job → 202); CandidateDashboard, ExamView, ProblemEditor
+- **Phase 6** — Problem editor UI; per-test-case time/memory overrides; test case add/edit/delete modals
+
+**Next:** Phase 7 — User Management UI (admin creates/edits/deactivates accounts).
+
+### Running the stack
+
+```bash
+docker compose up -d          # start all services
+docker compose build nginx    # rebuild frontend after frontend changes
+docker compose cp backend/app/. oj-api-1:/app/app && docker compose restart api   # deploy backend changes without rebuild
+```
+
+Migrations (run inside api container):
+```bash
+docker compose exec api alembic upgrade head
+```
 
 ## Planned architecture (from `G7-Architecture Design.md`)
 
@@ -49,4 +71,5 @@ Three user roles with distinct permissions; check the spec before broadening any
 - The spec is the canonical source of truth for behavior, table schemas, and verdict semantics — read the relevant section of `G7-Architecture Design.md` before designing an endpoint or migration.
 - The spec is written in Traditional Chinese; preserve Chinese identifiers when quoting it, but write code, comments, and commit messages in English unless the user asks otherwise.
 - The file is large (~420KB) because it embeds base64 architecture diagrams at the bottom — read by line range (the prose ends around line 360) rather than loading the whole file.
-- No CI, linters, or test runners are configured yet. When scaffolding a component, also propose the matching `make`/`uv`/`npm` scripts rather than assuming they exist.
+- A GitHub Actions CI workflow runs pytest on the backend. Backend tests live in `backend/tests/`. Frontend has no test suite yet.
+- When scaffolding a new component, also propose the matching `make`/`uv`/`npm` scripts rather than assuming they exist.
