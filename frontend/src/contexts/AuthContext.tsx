@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { apiLogout, apiRefresh } from '../api/auth'
+import { apiLogout, apiMe, apiRefresh } from '../api/auth'
 import type { UserOut } from '../types/auth'
 
 interface AuthState {
@@ -28,9 +28,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
     apiRefresh(stored)
-      .then((r) => setState((s) => ({ ...s, accessToken: r.access_token })))
-      .catch(() => localStorage.removeItem('refresh_token'))
-      .finally(() => setState((s) => ({ ...s, loading: false })))
+      .then((r) =>
+        apiMe(r.access_token).then((user) =>
+          setState({ user, accessToken: r.access_token, loading: false })
+        )
+      )
+      .catch(() => {
+        localStorage.removeItem('refresh_token')
+        setState({ user: null, accessToken: null, loading: false })
+      })
   }, [])
 
   const setAuth = useCallback((user: UserOut, accessToken: string, refreshToken: string) => {

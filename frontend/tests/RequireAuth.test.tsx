@@ -59,6 +59,9 @@ describe('RequireAuth', () => {
   test('shows protected content (no role filter) after token recovery', async () => {
     localStorage.setItem('refresh_token', 'tok')
     vi.spyOn(authApi, 'apiRefresh').mockResolvedValueOnce({ access_token: 'access-tok' })
+    vi.spyOn(authApi, 'apiMe').mockResolvedValueOnce({
+      user_id: '1', name: 'Alice', email: 'a@b.com', role: 'candidate',
+    })
 
     renderWithGuard(undefined)
 
