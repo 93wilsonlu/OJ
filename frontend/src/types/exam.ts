@@ -17,3 +17,18 @@ export interface ExamAssignment {
   assigned_difficulty: string | null
   created_at: string
 }
+
+export interface ExamProblem {
+  assignment_id: string
+  problem_id: string
+  title: string
+  description: string
+  input_format: string | null
+  output_format: string | null
+  sample_input: string | null
+  sample_output: string | null
+  difficulty: string
+  time_limit: number
+  memory_limit: number
+  allowed_langs: string[]
+}

@@ -1,9 +1,11 @@
 import Editor from '@monaco-editor/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { apiGetProblem } from '../api/problems'
 import { apiCreateSubmission } from '../api/submissions'
 import { useAuth } from '../hooks/useAuth'
 import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
+import type { Problem } from '../types/problem'
 import type { SubmissionStatus } from '../types/submission'
 
 const LANGUAGES = [
@@ -19,6 +21,12 @@ const MONACO_LANG: Record<string, string> = {
 const DEFAULT_CODE: Record<string, string> = {
   python3: '# Write your solution here\n',
   cpp17: '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // write your solution\n    return 0;\n}\n',
+}
+
+const DIFFICULTY_STYLE: Record<string, string> = {
+  easy:   'bg-green-900/60 text-green-300 ring-1 ring-green-700',
+  medium: 'bg-yellow-900/60 text-yellow-300 ring-1 ring-yellow-700',
+  hard:   'bg-red-900/60 text-red-300 ring-1 ring-red-700',
 }
 
 function VerdictPanel({ status, verdict, error }: {
@@ -54,10 +62,79 @@ function VerdictPanel({ status, verdict, error }: {
   )
 }
 
+function ProblemPanel({ problem }: { problem: Problem }) {
+  const diffStyle = DIFFICULTY_STYLE[problem.difficulty] ?? ''
+  return (
+    <div className="w-2/5 border-r border-oj-border overflow-y-auto p-5 shrink-0">
+      <div className="flex items-start gap-3 mb-4">
+        <h1 className="text-base font-semibold text-oj-fg flex-1">{problem.title}</h1>
+        <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full
+                          text-xs font-medium font-mono capitalize ${diffStyle}`}>
+          {problem.difficulty}
+        </span>
+      </div>
+
+      <div className="flex gap-4 text-xs font-mono text-oj-fg-muted mb-5">
+        <span>Time: {problem.time_limit} ms</span>
+        <span>Memory: {problem.memory_limit} MB</span>
+      </div>
+
+      <div className="prose prose-invert prose-sm max-w-none text-oj-fg text-sm leading-relaxed">
+        <p className="whitespace-pre-wrap">{problem.description}</p>
+
+        {problem.input_format && (
+          <>
+            <h3 className="text-xs font-semibold text-oj-fg-muted uppercase tracking-wide mt-5 mb-1">
+              Input
+            </h3>
+            <p className="whitespace-pre-wrap text-oj-fg">{problem.input_format}</p>
+          </>
+        )}
+
+        {problem.output_format && (
+          <>
+            <h3 className="text-xs font-semibold text-oj-fg-muted uppercase tracking-wide mt-4 mb-1">
+              Output
+            </h3>
+            <p className="whitespace-pre-wrap text-oj-fg">{problem.output_format}</p>
+          </>
+        )}
+
+        {(problem.sample_input || problem.sample_output) && (
+          <>
+            <h3 className="text-xs font-semibold text-oj-fg-muted uppercase tracking-wide mt-4 mb-2">
+              Example
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              {problem.sample_input && (
+                <div>
+                  <p className="text-xs text-oj-fg-muted mb-1">Input</p>
+                  <pre className="bg-oj-surface2 rounded p-2 text-xs overflow-x-auto text-oj-fg">
+                    {problem.sample_input}
+                  </pre>
+                </div>
+              )}
+              {problem.sample_output && (
+                <div>
+                  <p className="text-xs text-oj-fg-muted mb-1">Output</p>
+                  <pre className="bg-oj-surface2 rounded p-2 text-xs overflow-x-auto text-oj-fg">
+                    {problem.sample_output}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function ProblemEditor() {
   const { examId, problemId } = useParams<{ examId: string; problemId: string }>()
   const { accessToken, getAccessToken } = useAuth()
 
+  const [problem, setProblem] = useState<Problem | null>(null)
   const [language, setLanguage] = useState('python3')
   const [code, setCode] = useState(DEFAULT_CODE['python3'])
   const [submitting, setSubmitting] = useState(false)
@@ -65,6 +142,14 @@ export default function ProblemEditor() {
   const [submissionId, setSubmissionId] = useState<string | null>(null)
 
   const { data: submissionData } = useSubmissionPoller(submissionId, accessToken)
+
+  useEffect(() => {
+    if (!problemId) return
+    getAccessToken().then((token) => {
+      if (!token) return
+      apiGetProblem(token, problemId).then(setProblem).catch(() => {})
+    })
+  }, [problemId, getAccessToken])
 
   function handleLanguageChange(lang: string) {
     setLanguage(lang)
@@ -120,36 +205,43 @@ export default function ProblemEditor() {
         </button>
       </div>
 
-      {/* Editor */}
-      <div className="flex-1 min-h-0">
-        <Editor
-          height="100%"
-          language={MONACO_LANG[language] ?? language}
-          value={code}
-          onChange={(value) => setCode(value ?? '')}
-          theme="vs-dark"
-          options={{
-            fontSize: 14,
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            wordWrap: 'on',
-          }}
-        />
-      </div>
+      {/* Split: description | editor */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {problem && <ProblemPanel problem={problem} />}
 
-      {/* Result panel */}
-      <div className="shrink-0 px-4 pb-4">
-        {submitError && (
-          <div className="mt-4 p-3 rounded-lg bg-red-900/20 border border-red-700/50
-                          text-sm font-mono text-red-400">
-            {submitError}
+        <div className="flex flex-col flex-1 min-w-0">
+          {/* Editor */}
+          <div className="flex-1 min-h-0">
+            <Editor
+              height="100%"
+              language={MONACO_LANG[language] ?? language}
+              value={code}
+              onChange={(value) => setCode(value ?? '')}
+              theme="vs-dark"
+              options={{
+                fontSize: 14,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+              }}
+            />
           </div>
-        )}
-        <VerdictPanel
-          status={submissionData?.status ?? null}
-          verdict={submissionData?.judge_result?.verdict ?? null}
-          error={submissionData?.judge_result?.error_message ?? null}
-        />
+
+          {/* Result panel */}
+          <div className="shrink-0 px-4 pb-4">
+            {submitError && (
+              <div className="mt-4 p-3 rounded-lg bg-red-900/20 border border-red-700/50
+                              text-sm font-mono text-red-400">
+                {submitError}
+              </div>
+            )}
+            <VerdictPanel
+              status={submissionData?.status ?? null}
+              verdict={submissionData?.judge_result?.verdict ?? null}
+              error={submissionData?.judge_result?.error_message ?? null}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )
