@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 # Install isolate build deps
 RUN apt-get update && apt-get install -y \
-    git make gcc pkg-config libcap-dev libseccomp-dev \
+    git make gcc pkg-config libcap-dev libseccomp-dev libsystemd-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Build and install isolate
