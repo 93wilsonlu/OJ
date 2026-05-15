@@ -1,0 +1,23 @@
+FROM python:3.12-slim
+
+# Install isolate build deps
+RUN apt-get update && apt-get install -y \
+    git make gcc libcap-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build and install isolate
+RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
+    && cd /tmp/isolate \
+    && make install \
+    && rm -rf /tmp/isolate
+
+WORKDIR /app
+
+RUN pip install uv
+
+COPY pyproject.toml .
+RUN uv sync --no-dev
+
+COPY app/ app/
+
+CMD ["uv", "run", "rq", "worker", "--with-scheduler", "--url", "$REDIS_URL"]
