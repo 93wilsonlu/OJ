@@ -1,7 +1,7 @@
 # Implementation Phases
 
-> Execution order follows dependency and risk. Phase 6 (Judge Worker) carries the most
-> uncertainty — consider a Docker/isolate spike at the start of Phase 5 in parallel.
+> Execution order follows dependency and risk. Phase 8 (Judge Worker) carries the most
+> uncertainty — consider a Docker/isolate spike at the start of Phase 7 in parallel.
 
 ---
 
@@ -34,7 +34,7 @@
 
 ---
 
-## Phase 3 — Problem & Test Case Management
+## Phase 3 — Problem & Test Case Management (Backend)
 
 **Goal:** Problem admin can create problems with hidden test cases; no hidden data leaks.
 
@@ -80,14 +80,42 @@
 
 ---
 
-## Phase 6 — Judge Worker ⚠️ Highest Risk
+## Phase 6 — Problem Editor UI & Test Case Management
+
+**Goal:** Problem admin can edit problems and manage test cases with per-test-case time/memory overrides through the UI.
+
+- Backend: add `time_limit_override` (ms, nullable) and `memory_limit_override` (MB, nullable) columns to `TestCase` — inherits problem-level defaults when null
+- Backend: expose `PATCH /problems/{id}` and update `POST /problems/{id}/test-cases` to accept overrides
+- Frontend: `/problems/:id` — problem detail page with:
+  - Inline edit form for title, description, difficulty, time limit, memory limit, allowed languages
+  - Test case list showing `is_hidden`, `score_weight`, per-case overrides
+  - Upload form: input file + expected file + `is_hidden` + `score_weight` + optional `time_limit_override` + `memory_limit_override`
+  - Delete button per test case
+
+**Verify:** Edit problem title → change persists on reload; upload a hidden test case with 2× time limit → GET as candidate returns 0 hidden cases; GET as problem_admin returns the case with correct overrides; delete test case removes it from list.
+
+---
+
+## Phase 7 — User Management
+
+**Goal:** Admin can create, view, edit, and deactivate user accounts through the UI.
+
+- Backend: `GET /admin/users`, `POST /admin/users`, `PATCH /admin/users/{id}`, `DELETE /admin/users/{id}` with self-lockout guard
+- Frontend: `UserManagement.tsx` — paginated user table, create-user modal (name, email, password, role), edit role/name inline, deactivate button
+- Self-lockout prevention: admin cannot delete or demote their own account
+
+**Verify:** Create a new interviewer account; log in as that interviewer; admin cannot delete own account; 403 on non-admin access.
+
+---
+
+## Phase 8 — Judge Worker ⚠️ Highest Risk
 
 **Goal:** Submitted code gets judged by isolate; verdict appears in DB.
 
 - Docker image for judge-worker with isolate built as setuid binary
 - `worker.py` (RQ job entry point) + `runner.py` (isolate invocation + result parsing)
 - Python 3 runner + C++17 runner (compile → run)
-- Verdict computation (first non-AC test case wins), score, `passed_count`
+- Verdict computation (first non-AC test case wins), score, `passed_count`; respects per-test-case `time_limit_override` / `memory_limit_override`
 - Idempotency guard on `judge_results` INSERT
 - 3-retry with 30/90/270s backoff → `System Error` after exhaustion
 - Log upload to MinIO
@@ -97,16 +125,15 @@
 
 ---
 
-## Phase 7 — Reporting, Admin, & Observability
+## Phase 9 — Reporting & Observability
 
-**Goal:** Interviewers see scores; admin manages users; logs/metrics are structured.
+**Goal:** Interviewers see scores; logs/metrics are structured.
 
 - `GET /admin/exams/{id}/results` — per-candidate scorecards
 - `GET /admin/exams/{id}/stats` — per-problem pass rate + avg score
 - `show_score=false` gate on candidate `GET /submissions/{id}`
 - Signed MinIO URL (`code_url`, 1h TTL) for "View Code" button
-- Admin CRUD for users (`GET/PATCH/DELETE /admin/users`) with self-lockout
-- Frontend: `InterviewerDashboard.tsx` (results table + filters), `AdminDashboard.tsx` (stats), `UserManagement.tsx`
+- Frontend: `InterviewerDashboard.tsx` (results table + filters), `AdminDashboard.tsx` (stats)
 - structlog JSON output + Prometheus `/metrics` endpoint
 
-**Verify:** All 21 success criteria in SPEC.md pass; `docker compose up -d` from scratch boots the full stack with no manual steps.
+**Verify:** All success criteria in SPEC.md pass; `docker compose up -d` from scratch boots the full stack with no manual steps.
