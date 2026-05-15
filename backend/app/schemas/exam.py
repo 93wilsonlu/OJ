@@ -48,3 +48,18 @@ class ExamAssignmentOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ExamProblemOut(BaseModel):
+    assignment_id: uuid.UUID
+    problem_id: uuid.UUID
+    title: str
+    description: str
+    input_format: str | None
+    output_format: str | None
+    sample_input: str | None
+    sample_output: str | None
+    difficulty: str
+    time_limit: int
+    memory_limit: int
+    allowed_langs: list[str]

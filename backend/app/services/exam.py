@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -6,7 +7,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.problem import Problem
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
+
+
+@dataclass
+class ExamProblemRow:
+    assignment_id: uuid.UUID
+    problem_id: uuid.UUID
+    title: str
+    description: str
+    input_format: str | None
+    output_format: str | None
+    sample_input: str | None
+    sample_output: str | None
+    difficulty: str
+    time_limit: int
+    memory_limit: int
+    allowed_langs: list[str]
 
 
 async def list_exams(db: AsyncSession, user_id: uuid.UUID, role: str) -> list[Exam]:
@@ -57,6 +75,37 @@ async def update_exam(db: AsyncSession, exam: Exam, data: ExamUpdate) -> Exam:
 async def delete_exam(db: AsyncSession, exam: Exam) -> None:
     await db.delete(exam)
     await db.commit()
+
+
+async def list_exam_problems_for_user(
+    db: AsyncSession, exam_id: uuid.UUID, user_id: uuid.UUID, role: str
+) -> list[ExamProblemRow]:
+    stmt = (
+        select(ExamAssignment, Problem)
+        .join(Problem, ExamAssignment.problem_id == Problem.problem_id)
+        .where(ExamAssignment.exam_id == exam_id)
+        .order_by(ExamAssignment.created_at)
+    )
+    if role == "candidate":
+        stmt = stmt.where(ExamAssignment.candidate_id == user_id)
+    result = await db.execute(stmt)
+    rows = []
+    for assignment, problem in result.all():
+        rows.append(ExamProblemRow(
+            assignment_id=assignment.assignment_id,
+            problem_id=problem.problem_id,
+            title=problem.title,
+            description=problem.description,
+            input_format=problem.input_format,
+            output_format=problem.output_format,
+            sample_input=problem.sample_input,
+            sample_output=problem.sample_output,
+            difficulty=problem.difficulty,
+            time_limit=problem.time_limit,
+            memory_limit=problem.memory_limit,
+            allowed_langs=problem.allowed_langs,
+        ))
+    return rows
 
 
 async def list_assignments(db: AsyncSession, exam_id: uuid.UUID) -> list[ExamAssignment]:

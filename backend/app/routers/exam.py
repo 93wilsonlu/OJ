@@ -11,6 +11,7 @@ from app.schemas.exam import (
     ExamAssignmentOut,
     ExamCreate,
     ExamOut,
+    ExamProblemOut,
     ExamUpdate,
 )
 from app.services import exam as exam_service
@@ -74,6 +75,19 @@ async def delete_exam(
     exam = await exam_service.get_exam(db, exam_id)
     await exam_service.delete_exam(db, exam)
     return Response(status_code=204)
+
+
+@router.get("/{exam_id}/problems", response_model=list[ExamProblemOut])
+async def list_exam_problems(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await exam_service.get_exam(db, exam_id)
+    items = await exam_service.list_exam_problems_for_user(
+        db, exam_id, current_user.user_id, current_user.role
+    )
+    return [ExamProblemOut(**vars(item)) for item in items]
 
 
 @router.get("/{exam_id}/assignments", response_model=list[ExamAssignmentOut])
