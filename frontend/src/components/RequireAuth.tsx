@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuthContext } from '../contexts/AuthContext'
 import type { UserOut } from '../types/auth'
 
 interface Props {
-  children: React.ReactNode
+  children: ReactNode
   roles?: UserOut['role'][]
 }
 

@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { vi, beforeEach, afterEach } from 'vitest'
+import { vi, beforeEach } from 'vitest'
 import Login from '../src/pages/Login'
 import { AuthProvider } from '../src/contexts/AuthContext'
 import * as authApi from '../src/api/auth'
@@ -83,9 +83,11 @@ describe('Login page', () => {
   })
 
   test('redirects to / when user already has a token', async () => {
-    // Seed a refresh token; mock the refresh endpoint to return a token
     localStorage.setItem('refresh_token', 'existing-refresh')
     vi.spyOn(authApi, 'apiRefresh').mockResolvedValueOnce({ access_token: 'valid-tok' })
+    vi.spyOn(authApi, 'apiMe').mockResolvedValueOnce({
+      user_id: '1', name: 'Alice', email: 'alice@example.com', role: 'candidate',
+    })
 
     renderLogin()
 
