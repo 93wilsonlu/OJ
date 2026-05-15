@@ -4,7 +4,9 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.exam_assignment import ExamAssignment
 from app.models.problem import Problem
+from app.models.submission import Submission
 from app.models.test_case import TestCase
 from app.schemas.problem import ProblemCreate, ProblemUpdate
 from app.services import storage
@@ -55,13 +57,22 @@ async def update_problem(
 
 
 async def delete_problem(db: AsyncSession, problem: Problem) -> None:
-    # No DB cascade on test_cases FK — delete them manually first
-    result = await db.execute(
-        select(TestCase).where(TestCase.problem_id == problem.problem_id)
-    )
+    pid = problem.problem_id
+
+    # Remove dependent rows that have no DB-level cascade
+    for model, col in (
+        (Submission, Submission.problem_id),
+        (ExamAssignment, ExamAssignment.problem_id),
+    ):
+        result = await db.execute(select(model).where(col == pid))
+        for row in result.scalars():
+            await db.delete(row)
+
+    result = await db.execute(select(TestCase).where(TestCase.problem_id == pid))
     for tc in result.scalars():
         _remove_tc_objects(tc)
         await db.delete(tc)
+
     await db.delete(problem)
     await db.commit()
 
@@ -98,6 +109,8 @@ async def create_test_case(
     expected_bytes: bytes,
     is_hidden: bool,
     score_weight: float,
+    time_limit_override: int | None = None,
+    memory_limit_override: int | None = None,
 ) -> TestCase:
     tc_id = uuid.uuid4()
     input_key = f"test-cases/{problem_id}/{tc_id}/input"
@@ -113,6 +126,8 @@ async def create_test_case(
         expected_output_key=expected_key,
         is_hidden=is_hidden,
         score_weight=score_weight,
+        time_limit_override=time_limit_override,
+        memory_limit_override=memory_limit_override,
     )
     db.add(tc)
     await db.commit()

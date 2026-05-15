@@ -89,6 +89,8 @@ async def create_test_case(
     expected_file: UploadFile,
     is_hidden: bool = Form(True),
     score_weight: float = Form(1.0),
+    time_limit_override: int | None = Form(None),
+    memory_limit_override: int | None = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -97,7 +99,8 @@ async def create_test_case(
     input_bytes = await input_file.read()
     expected_bytes = await expected_file.read()
     tc = await problem_service.create_test_case(
-        db, problem_id, input_bytes, expected_bytes, is_hidden, score_weight
+        db, problem_id, input_bytes, expected_bytes, is_hidden, score_weight,
+        time_limit_override, memory_limit_override,
     )
     return TestCaseOut.model_validate(tc)
 

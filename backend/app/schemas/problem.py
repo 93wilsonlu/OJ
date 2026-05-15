@@ -54,5 +54,7 @@ class TestCaseOut(BaseModel):
     problem_id: uuid.UUID
     is_hidden: bool
     score_weight: float
+    time_limit_override: int | None
+    memory_limit_override: int | None
 
     model_config = {"from_attributes": True}
