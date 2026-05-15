@@ -170,6 +170,9 @@ npm run lint
     │   │   └── VerdictBadge.tsx
     │   ├── pages/
     │   │   ├── Login.tsx
+    │   │   ├── RoleHome.tsx            # Role-based redirect: / → role's default page
+    │   │   ├── NotFound.tsx            # 404 — unknown route
+    │   │   ├── ErrorPage.tsx           # Generic error display (403, 500, network)
     │   │   ├── CandidateDashboard.tsx
     │   │   ├── ExamView.tsx            # Problem list for one exam
     │   │   ├── ProblemEditor.tsx       # Code editor + submission
@@ -465,6 +468,32 @@ ADMIN_NAME=System Admin
 This runs as an `on_startup` hook in `app/main.py`. If an admin already exists, the hook is a no-op.
 
 ---
+
+## Frontend Routes
+
+| Path | Component | Guard | Notes |
+|---|---|---|---|
+| `/login` | `Login.tsx` | public | Redirects to `/` if already authenticated |
+| `/` | `RoleHome.tsx` | auth | Redirects to role's default page (see below) |
+| `/dashboard` | `CandidateDashboard.tsx` | candidate | Lists assigned exams |
+| `/exams/:examId` | `ExamView.tsx` | candidate | Problem list for one exam |
+| `/exams/:examId/problems/:problemId` | `ProblemEditor.tsx` | candidate | Monaco editor + submit |
+| `/submissions/:submissionId` | `SubmissionStatus.tsx` | candidate | Polls for verdict |
+| `/interviewer` | `InterviewerDashboard.tsx` | interviewer | Exam management |
+| `/admin` | `AdminDashboard.tsx` | interviewer, admin | Exam results + stats |
+| `/admin/users` | `UserManagement.tsx` | admin | User CRUD |
+| `*` | `NotFound.tsx` | public | 404 for any unmatched route |
+
+**Role-based redirect from `/`:**
+- `candidate` → `/dashboard`
+- `interviewer` → `/interviewer`
+- `problem_admin` → `/interviewer` (same view, write access scoped by API)
+- `admin` → `/admin/users`
+
+**Error states (rendered by `ErrorPage.tsx`):**
+- `403` — Forbidden (wrong role for this route)
+- `404` — Shown by `NotFound.tsx` (dedicated page, not ErrorPage)
+- `500` / network — Unexpected API failure
 
 ## Code Style
 

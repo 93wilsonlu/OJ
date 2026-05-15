@@ -11,7 +11,7 @@ export default function RequireAuth({ children, roles }: Props) {
   const { user, accessToken } = useAuthContext()
 
   if (!accessToken) return <Navigate to="/login" replace />
-  if (roles && user && !roles.includes(user.role)) return <Navigate to="/login" replace />
+  if (roles && user && !roles.includes(user.role)) return <Navigate to="/403" replace />
 
   return <>{children}</>
 }
