@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -19,7 +21,15 @@ async def get_current_user(
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    user = await db.get(User, payload["sub"])
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    try:
+        user_id = _uuid.UUID(sub)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
     return user

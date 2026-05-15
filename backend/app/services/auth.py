@@ -104,4 +104,8 @@ async def seed_admin(db: AsyncSession) -> None:
         role="admin",
     )
     db.add(admin)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        # Another worker beat us to it — treat duplicate as success
+        await db.rollback()

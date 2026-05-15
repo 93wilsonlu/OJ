@@ -34,6 +34,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const setAuth = useCallback((user: UserOut, accessToken: string, refreshToken: string) => {
+    // Refresh token in localStorage is an intentional trade-off: httpOnly cookies
+    // would be safer against XSS but require server-side cookie handling across the
+    // nginx boundary. Acceptable for this single-machine deployment.
     localStorage.setItem('refresh_token', refreshToken)
     setState({ user, accessToken, loading: false })
   }, [])
