@@ -5,6 +5,12 @@ import AppShell from './components/AppShell'
 import RequireAuth from './components/RequireAuth'
 import Login from './pages/Login'
 import RoleHome from './pages/RoleHome'
+import CandidateDashboard from './pages/CandidateDashboard'
+import ExamView from './pages/ExamView'
+import ProblemEditor from './pages/ProblemEditor'
+import SubmissionStatus from './pages/SubmissionStatus'
+import ProblemsPage from './pages/ProblemsPage'
+import ProblemDetailPage from './pages/ProblemDetailPage'
 import NotFound from './pages/NotFound'
 import ErrorPage from './pages/ErrorPage'
 import type { UserOut } from './types/auth'
@@ -55,15 +61,31 @@ export default function App() {
             path="/exams"
             element={
               <Protected roles={['candidate', 'interviewer']}>
-                <Stub label="Exams (Phase 5)" />
+                <CandidateDashboard />
               </Protected>
             }
           />
           <Route
-            path="/dashboard"
+            path="/exams/:examId"
+            element={
+              <Protected roles={['candidate', 'interviewer']}>
+                <ExamView />
+              </Protected>
+            }
+          />
+          <Route
+            path="/exams/:examId/problems/:problemId"
             element={
               <Protected roles={['candidate']}>
-                <Stub label="Candidate Dashboard (Phase 5)" />
+                <ProblemEditor />
+              </Protected>
+            }
+          />
+          <Route
+            path="/submissions/:submissionId"
+            element={
+              <Protected roles={['candidate', 'interviewer', 'admin']}>
+                <SubmissionStatus />
               </Protected>
             }
           />
@@ -73,7 +95,15 @@ export default function App() {
             path="/problems"
             element={
               <Protected roles={['problem_admin', 'admin']}>
-                <Stub label="Problems (Phase 5)" />
+                <ProblemsPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/problems/:problemId"
+            element={
+              <Protected roles={['problem_admin', 'admin']}>
+                <ProblemDetailPage />
               </Protected>
             }
           />
