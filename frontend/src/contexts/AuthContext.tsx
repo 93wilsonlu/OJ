@@ -5,6 +5,8 @@ import type { UserOut } from '../types/auth'
 interface AuthState {
   user: UserOut | null
   accessToken: string | null
+  /** true while the initial refresh-token recovery is in flight */
+  loading: boolean
 }
 
 interface AuthContextValue extends AuthState {
@@ -16,24 +18,24 @@ interface AuthContextValue extends AuthState {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AuthState>({ user: null, accessToken: null })
+  const [state, setState] = useState<AuthState>({ user: null, accessToken: null, loading: true })
 
   // On mount: try to recover session from stored refresh token
   useEffect(() => {
     const stored = localStorage.getItem('refresh_token')
-    if (!stored) return
+    if (!stored) {
+      setState((s) => ({ ...s, loading: false }))
+      return
+    }
     apiRefresh(stored)
-      .then((r) => {
-        // We have a new access token but need the user info from it
-        // The access token payload contains role; fetch /auth/me on first protected request
-        setState((s) => ({ ...s, accessToken: r.access_token }))
-      })
+      .then((r) => setState((s) => ({ ...s, accessToken: r.access_token })))
       .catch(() => localStorage.removeItem('refresh_token'))
+      .finally(() => setState((s) => ({ ...s, loading: false })))
   }, [])
 
   const setAuth = useCallback((user: UserOut, accessToken: string, refreshToken: string) => {
     localStorage.setItem('refresh_token', refreshToken)
-    setState({ user, accessToken })
+    setState({ user, accessToken, loading: false })
   }, [])
 
   const clearAuth = useCallback(async () => {
@@ -42,10 +44,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('refresh_token')
       await apiLogout(stored)
     }
-    setState({ user: null, accessToken: null })
+    setState({ user: null, accessToken: null, loading: false })
   }, [])
 
-  // Returns a valid access token, silently refreshing if needed
   const getAccessToken = useCallback(async (): Promise<string | null> => {
     if (state.accessToken) return state.accessToken
     const stored = localStorage.getItem('refresh_token')
@@ -56,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return r.access_token
     } catch {
       localStorage.removeItem('refresh_token')
-      setState({ user: null, accessToken: null })
+      setState({ user: null, accessToken: null, loading: false })
       return null
     }
   }, [state.accessToken])

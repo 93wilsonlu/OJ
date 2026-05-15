@@ -8,7 +8,10 @@ interface Props {
 }
 
 export default function RequireAuth({ children, roles }: Props) {
-  const { user, accessToken } = useAuthContext()
+  const { user, accessToken, loading } = useAuthContext()
+
+  // Hold rendering until the initial token-recovery attempt is done
+  if (loading) return null
 
   if (!accessToken) return <Navigate to="/login" replace />
   if (roles && user && !roles.includes(user.role)) return <Navigate to="/403" replace />

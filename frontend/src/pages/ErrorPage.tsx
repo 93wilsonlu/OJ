@@ -6,7 +6,7 @@ interface Props {
 }
 
 const STATUS_COPY: Record<number, { title: string; detail: string }> = {
-  403: { title: 'Access denied',       detail: 'You don't have permission to view this page.' },
+  403: { title: 'Access denied',       detail: 'You don\'t have permission to view this page.' },
   500: { title: 'Server error',        detail: 'Something went wrong on our end. Please try again.' },
   0:   { title: 'Network error',       detail: 'Could not reach the server. Check your connection.' },
 }
