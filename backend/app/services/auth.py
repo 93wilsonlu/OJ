@@ -34,7 +34,7 @@ def create_access_token(user: User) -> str:
 async def login(db: AsyncSession, email: str, password: str) -> tuple[str, str, User]:
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None or user.is_active is False or not verify_password(password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     access_token = create_access_token(user)
@@ -67,7 +67,7 @@ async def refresh(db: AsyncSession, refresh_token: str) -> str:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
     user = await db.get(User, token.user_id)
-    if user is None:
+    if user is None or user.is_active is False:
         raise HTTPException(status_code=401, detail="User not found")
 
     return create_access_token(user)

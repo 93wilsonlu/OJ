@@ -4,7 +4,7 @@ Integration tests that need a real DB are in test_auth_integration.py.
 """
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -29,6 +29,7 @@ def _make_user(role: str = "candidate") -> User:
     u.email = "test@example.com"
     u.password_hash = hash_password("secret")
     u.role = role
+    u.is_active = True
     return u
 
 
@@ -57,6 +58,7 @@ def test_hash_and_verify():
 
 def test_create_access_token_contains_sub_and_role():
     from jose import jwt
+
     from app.config import settings
 
     user = _make_user("interviewer")
@@ -105,6 +107,18 @@ async def test_login_unknown_email_raises_401():
     assert exc.value.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_login_inactive_user_raises_401():
+    user = _make_user()
+    user.is_active = False
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=user)))
+
+    with pytest.raises(HTTPException) as exc:
+        await login(db, "test@example.com", "secret")
+    assert exc.value.status_code == 401
+
+
 # --- refresh ---
 
 @pytest.mark.asyncio
@@ -148,6 +162,20 @@ async def test_refresh_invalid_uuid_raises_401():
     db = AsyncMock()
     with pytest.raises(HTTPException) as exc:
         await refresh(db, "not-a-uuid")
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_inactive_user_raises_401():
+    user = _make_user()
+    user.is_active = False
+    token = _make_token(user.user_id)
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=token)))
+    db.get = AsyncMock(return_value=user)
+
+    with pytest.raises(HTTPException) as exc:
+        await refresh(db, str(token.token_id))
     assert exc.value.status_code == 401
 
 

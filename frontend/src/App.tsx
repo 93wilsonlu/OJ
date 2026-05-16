@@ -11,6 +11,7 @@ import ProblemEditor from './pages/ProblemEditor'
 import SubmissionStatus from './pages/SubmissionStatus'
 import ProblemsPage from './pages/ProblemsPage'
 import ProblemDetailPage from './pages/ProblemDetailPage'
+import UserManagement from './pages/UserManagement'
 import NotFound from './pages/NotFound'
 import ErrorPage from './pages/ErrorPage'
 import type { UserOut } from './types/auth'
@@ -123,7 +124,7 @@ export default function App() {
             path="/admin/users"
             element={
               <Protected roles={['admin']}>
-                <Stub label="User Management (Phase 7)" />
+                <UserManagement />
               </Protected>
             }
           />

@@ -30,6 +30,6 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user = await db.get(User, user_id)
-    if user is None:
+    if user is None or user.is_active is False:
         raise HTTPException(status_code=401, detail="User not found")
     return user
