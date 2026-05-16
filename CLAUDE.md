@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository status
 
-**Phases 1–6 are implemented and running.** The stack is live via `docker compose up`. Implementation phase tracker: `PHASES.md`.
+**Phases 1–7 are implemented and running.** The stack is live via `docker compose up`. Implementation phase tracker: `PHASES.md`.
 
 - **Phase 1** — Docker Compose, Nginx, FastAPI app factory, Alembic migrations, MinIO bucket
 - **Phase 2** — Auth (JWT + refresh tokens), role guards, seeded admin, React login + AuthContext
@@ -12,8 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Phase 4** — App shell, navbar, role-based nav, logout
 - **Phase 5** — Exam management + submission intake (POST /submissions → RQ job → 202); CandidateDashboard, ExamView, ProblemEditor
 - **Phase 6** — Problem editor UI; per-test-case time/memory overrides; test case add/edit/delete modals
+- **Phase 7** — User management API + UI; admin CRUD, account deactivation, self-lockout protection
 
-**Next:** Phase 7 — User Management UI (admin creates/edits/deactivates accounts).
+**Next:** Phase 8 — Judge Worker (sandboxed compile/run + verdict pipeline).
 
 ### Running the stack
 

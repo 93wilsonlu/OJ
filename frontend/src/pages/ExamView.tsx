@@ -54,7 +54,7 @@ export default function ExamView() {
   const latestByProblem = new Map<string, Submission>()
   for (const s of submissions) {
     const prev = latestByProblem.get(s.problem_id)
-    if (!prev || new Date(s.created_at) > new Date(prev.created_at)) {
+    if (!prev || new Date(s.submitted_at) > new Date(prev.submitted_at)) {
       latestByProblem.set(s.problem_id, s)
     }
   }

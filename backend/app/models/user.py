@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import CheckConstraint, DateTime, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,6 +23,7 @@ class User(Base):
         nullable=False,
         info={"check": "role IN ('admin','interviewer','problem_admin','candidate')"},
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
