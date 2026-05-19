@@ -18,6 +18,16 @@ export interface ExamAssignment {
   created_at: string
 }
 
+export interface ExamCreate {
+  title: string
+  description?: string
+  start_time: string
+  end_time: string
+  show_score: boolean
+}
+
+export type ExamUpdate = Partial<ExamCreate>
+
 export interface ExamProblem {
   assignment_id: string
   problem_id: string
