@@ -10,8 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Phase 2** — Auth (JWT + refresh tokens), role guards, seeded admin, React login + AuthContext
 - **Phase 3** — Problem + TestCase CRUD backend; hidden test case filtering; MinIO file storage
 - **Phase 4** — App shell, navbar, role-based nav, logout
-- **Phase 5** — Exam management + submission intake (POST /submissions → RQ job → 202); CandidateDashboard, ExamView, ProblemEditor
-- **Phase 6** — Problem editor UI; per-test-case time/memory overrides; test case add/edit/delete modals
+- **Phase 5** — Exam management + submission intake; ExamManagePage (create/edit exam + assignment management for interviewers), CandidateDashboard, ExamView, ProblemEditor
+- **Phase 6** — Problem editor UI; per-test-case time/memory overrides; test case add/edit/delete modals; ProblemViewPage (read-only problem detail for interviewers)
 - **Phase 7** — User management API + UI; admin CRUD, account deactivation, self-lockout protection
 
 **Next:** Phase 8 — Judge Worker (sandboxed compile/run + verdict pipeline).

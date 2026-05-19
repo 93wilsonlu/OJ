@@ -71,28 +71,33 @@
 **Goal:** Interviewer can create an exam and assign problems/candidates. Candidate can submit code.
 
 - `Exam` + `ExamAssignment` + `Submission` models
-- Exam CRUD + assignment endpoints
+- Exam CRUD + assignment endpoints (`POST/PATCH/DELETE /exams`, `POST/DELETE /exams/{id}/assignments`)
 - `POST /submissions` — validates assignment, rate limit, `end_time`, uploads to MinIO, enqueues RQ job, returns 202
 - `GET /submissions/{id}` + `GET /submissions` (interviewer filter list)
-- Frontend: `CandidateDashboard`, `ExamView`, `ProblemEditor` (Monaco + file upload), submit button
+- `GET /exams/{id}/problems` — returns problems assigned to the calling user (candidate: own assignments only; interviewer/admin: all)
+- Frontend:
+  - `CandidateDashboard` — exam list for candidates; for interviewers adds "New Exam" button and "Manage" link per exam
+  - `ExamManagePage` — create/edit exam form (title, description, start/end time, show_score) + assignment management table (add problem + candidate, remove assignments); routes `/exams/new` and `/exams/:examId/manage` (interviewer/admin)
+  - `ExamView` — exam detail with problem list, difficulty badges, latest submission verdict per problem; links disabled when exam has ended
+  - `ProblemEditor` — Monaco editor split layout: left description panel (40%) + right code editor (60%) + submit button + result panel
 
-**Verify:** Candidate submits → gets `submission_id` + `status=pending` in <500ms; submitting after `end_time` → 403; rate limit blocks second submit within 30s; RQ job appears in queue.
+**Verify:** Candidate submits → gets `submission_id` + `status=pending` in <500ms; submitting after `end_time` → 403; rate limit blocks second submit within 30s; RQ job appears in queue; interviewer creates exam and assigns problems/candidates via UI.
 
 ---
 
 ## Phase 6 — Problem Editor UI & Test Case Management
 
-**Goal:** Problem admin can edit problems and manage test cases with per-test-case time/memory overrides through the UI.
+**Goal:** Problem admin can edit problems and manage test cases with per-test-case time/memory overrides through the UI. Interviewers can preview problem details before assigning.
 
 - Backend: add `time_limit_override` (ms, nullable) and `memory_limit_override` (MB, nullable) columns to `TestCase` — inherits problem-level defaults when null
-- Backend: expose `PATCH /problems/{id}` and update `POST /problems/{id}/test-cases` to accept overrides
-- Frontend: `/problems/:id` — problem detail page with:
+- Backend: expose `PATCH /problems/{id}` and update `POST /problems/{id}/test-cases` to accept overrides; add `name` field to `TestCase`
+- Frontend: `/problems/:id` (`ProblemDetailPage`) — problem detail page with:
   - Inline edit form for title, description, difficulty, time limit, memory limit, allowed languages
-  - Test case list showing `is_hidden`, `score_weight`, per-case overrides
-  - Upload form: input file + expected file + `is_hidden` + `score_weight` + optional `time_limit_override` + `memory_limit_override`
-  - Delete button per test case
+  - Test case list showing `is_hidden`, `score_weight`, per-case overrides, name
+  - Add/edit/delete test case modals
+- Frontend: `/problems/:id/view` (`ProblemViewPage`) — read-only problem view for interviewers/admins: title, difficulty badge, time/memory limits, allowed languages, description, input/output format, sample I/O; accessible to `interviewer`, `problem_admin`, `admin`
 
-**Verify:** Edit problem title → change persists on reload; upload a hidden test case with 2× time limit → GET as candidate returns 0 hidden cases; GET as problem_admin returns the case with correct overrides; delete test case removes it from list.
+**Verify:** Edit problem title → change persists on reload; upload a hidden test case with 2× time limit → GET as candidate returns 0 hidden cases; GET as problem_admin returns the case with correct overrides; delete test case removes it from list; interviewer can navigate to `/problems/:id/view` and see description without edit controls.
 
 ---
 
