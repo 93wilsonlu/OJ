@@ -26,3 +26,9 @@ export interface JudgeResult {
 export interface SubmissionDetail extends Submission {
   judge_result: JudgeResult | null
 }
+
+export interface SubmissionListItem extends SubmissionDetail {
+  problem_title: string
+  candidate_name: string
+  candidate_email: string
+}

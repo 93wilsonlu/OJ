@@ -1,18 +1,56 @@
 import math
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.exam import Exam
+from app.models.exam_assignment import ExamAssignment
+from app.models.judge_result import JudgeResult
+from app.models.problem import Problem
+from app.models.submission import Submission
 from app.models.user import User
 from app.schemas.admin import AdminUserCreate, AdminUserUpdate
 from app.services.auth import hash_password
 
 
+@dataclass
+class ExamProblemResult:
+    problem_id: uuid.UUID
+    title: str
+    best_score: float | None = None
+    submission_count: int = 0
+    latest_verdict: str | None = None
+    latest_submitted_at: datetime | None = None
+
+
+@dataclass
+class ExamCandidateResult:
+    candidate_id: uuid.UUID
+    name: str
+    email: str
+    problems: list[ExamProblemResult]
+    total_score: float
+
+
+@dataclass
+class ExamResults:
+    exam_id: uuid.UUID
+    title: str
+    candidates: list[ExamCandidateResult]
+
+
 def _require_admin(user: User) -> None:
     if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+
+def _require_exam_result_viewer(user: User) -> None:
+    if user.role not in {"admin", "interviewer"}:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
@@ -126,3 +164,92 @@ async def deactivate_user(
 
     user.is_active = False
     await db.commit()
+
+
+async def get_exam_results(
+    db: AsyncSession,
+    current_user: User,
+    exam_id: uuid.UUID,
+) -> ExamResults:
+    _require_exam_result_viewer(current_user)
+
+    exam = await db.get(Exam, exam_id)
+    if exam is None:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    stmt = (
+        select(ExamAssignment, User, Problem, Submission, JudgeResult)
+        .join(User, ExamAssignment.candidate_id == User.user_id)
+        .join(Problem, ExamAssignment.problem_id == Problem.problem_id)
+        .outerjoin(
+            Submission,
+            and_(
+                Submission.exam_id == ExamAssignment.exam_id,
+                Submission.candidate_id == ExamAssignment.candidate_id,
+                Submission.problem_id == ExamAssignment.problem_id,
+            ),
+        )
+        .outerjoin(JudgeResult, JudgeResult.submission_id == Submission.submission_id)
+        .where(ExamAssignment.exam_id == exam_id)
+        .order_by(
+            User.name.asc(),
+            User.email.asc(),
+            Problem.title.asc(),
+            Submission.submitted_at.desc(),
+        )
+    )
+    rows = await db.execute(stmt)
+
+    candidates: dict[uuid.UUID, dict] = {}
+    for assignment, candidate, problem, submission, judge_result in rows.all():
+        candidate_row = candidates.setdefault(
+            candidate.user_id,
+            {
+                "candidate": candidate,
+                "problems": {},
+            },
+        )
+        problem_row = candidate_row["problems"].setdefault(
+            assignment.problem_id,
+            ExamProblemResult(
+                problem_id=assignment.problem_id,
+                title=problem.title,
+            ),
+        )
+
+        if submission is None:
+            continue
+
+        problem_row.submission_count += 1
+        if (
+            problem_row.latest_submitted_at is None
+            or submission.submitted_at > problem_row.latest_submitted_at
+        ):
+            problem_row.latest_submitted_at = submission.submitted_at
+            problem_row.latest_verdict = judge_result.verdict if judge_result else submission.status
+
+        if judge_result is not None:
+            score = float(judge_result.score)
+            if problem_row.best_score is None or score > problem_row.best_score:
+                problem_row.best_score = score
+
+    result_candidates: list[ExamCandidateResult] = []
+    for candidate_row in candidates.values():
+        candidate = candidate_row["candidate"]
+        problems = list(candidate_row["problems"].values())
+        total_score = sum(problem.best_score or 0 for problem in problems)
+        result_candidates.append(
+            ExamCandidateResult(
+                candidate_id=candidate.user_id,
+                name=candidate.name,
+                email=candidate.email,
+                problems=problems,
+                total_score=total_score,
+            )
+        )
+
+    return ExamResults(
+        exam_id=exam.exam_id,
+        title=exam.title,
+        candidates=result_candidates,
+    )

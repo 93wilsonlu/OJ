@@ -41,3 +41,9 @@ class JudgeResultOut(BaseModel):
 
 class SubmissionDetailOut(SubmissionOut):
     judge_result: JudgeResultOut | None = None
+
+
+class SubmissionListItemOut(SubmissionDetailOut):
+    problem_title: str
+    candidate_name: str
+    candidate_email: str

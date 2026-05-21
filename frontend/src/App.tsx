@@ -13,6 +13,8 @@ import ProblemsPage from './pages/ProblemsPage'
 import ProblemDetailPage from './pages/ProblemDetailPage'
 import ProblemViewPage from './pages/ProblemViewPage'
 import ExamManagePage from './pages/ExamManagePage'
+import ExamResultsPage from './pages/ExamResultsPage'
+import SubmissionsPage from './pages/SubmissionsPage'
 import UserManagement from './pages/UserManagement'
 import NotFound from './pages/NotFound'
 import ErrorPage from './pages/ErrorPage'
@@ -85,6 +87,14 @@ export default function App() {
             }
           />
           <Route
+            path="/exams/:examId/results"
+            element={
+              <Protected roles={['interviewer', 'admin']}>
+                <ExamResultsPage />
+              </Protected>
+            }
+          />
+          <Route
             path="/exams/:examId"
             element={
               <Protected roles={['candidate', 'interviewer', 'admin']}>
@@ -101,9 +111,17 @@ export default function App() {
             }
           />
           <Route
+            path="/submissions"
+            element={
+              <Protected roles={['candidate', 'interviewer', 'problem_admin', 'admin']}>
+                <SubmissionsPage />
+              </Protected>
+            }
+          />
+          <Route
             path="/submissions/:submissionId"
             element={
-              <Protected roles={['candidate', 'interviewer', 'admin']}>
+              <Protected roles={['candidate', 'interviewer', 'problem_admin', 'admin']}>
                 <SubmissionStatus />
               </Protected>
             }

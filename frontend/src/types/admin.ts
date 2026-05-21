@@ -30,3 +30,25 @@ export interface AdminUserUpdate {
   email?: string
   role?: AdminUserRole
 }
+
+export interface ExamProblemResult {
+  problem_id: string
+  title: string
+  best_score: number | null
+  submission_count: number
+  latest_verdict: string | null
+}
+
+export interface ExamCandidateResult {
+  candidate_id: string
+  name: string
+  email: string
+  problems: ExamProblemResult[]
+  total_score: number
+}
+
+export interface ExamResults {
+  exam_id: string
+  title: string
+  candidates: ExamCandidateResult[]
+}

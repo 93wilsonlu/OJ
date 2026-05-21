@@ -86,12 +86,20 @@ export default function CandidateDashboard() {
                     </Link>
                     <div className="flex items-center gap-2 shrink-0">
                       {isInterviewer && (
-                        <Link
-                          to={`/exams/${exam.exam_id}/manage`}
-                          className="text-xs text-oj-accent hover:underline"
-                        >
-                          Manage
-                        </Link>
+                        <>
+                          <Link
+                            to={`/exams/${exam.exam_id}/results`}
+                            className="text-xs text-oj-accent hover:underline"
+                          >
+                            Results
+                          </Link>
+                          <Link
+                            to={`/exams/${exam.exam_id}/manage`}
+                            className="text-xs text-oj-accent hover:underline"
+                          >
+                            Manage
+                          </Link>
+                        </>
                       )}
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full

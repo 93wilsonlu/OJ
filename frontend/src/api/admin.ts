@@ -1,4 +1,5 @@
 import type {
+  ExamResults,
   AdminUser,
   AdminUserCreate,
   AdminUserList,
@@ -77,4 +78,12 @@ export async function apiDeactivateAdminUser(token: string, userId: string): Pro
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnError(res)
+}
+
+export async function apiGetExamResults(token: string, examId: string): Promise<ExamResults> {
+  const res = await fetch(`${BASE}/admin/exams/${examId}/results`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+  return res.json()
 }
