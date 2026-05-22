@@ -40,26 +40,69 @@ function CreateExamModal({
   const [selectedProblems, setSelectedProblems] = useState<string[]>([])
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
 
+  // 新增：搜尋與過濾狀態
+  const [problemSearch, setProblemSearch] = useState('')
+  const [problemDifficulty, setProblemDifficulty] = useState<string>('all')
+  const [candidateSearch, setCandidateSearch] = useState('')
+
   useEffect(() => {
     if (open) {
       setForm(EMPTY_CREATE_FORM)
       setSelectedProblems([])
       setSelectedCandidates([])
+      setProblemSearch('')
+      setProblemDifficulty('all')
+      setCandidateSearch('')
     }
   }, [open])
 
   if (!open) return null
 
+  // ── 過濾邏輯 ──
+  const filteredProblems = availableProblems.filter(p => {
+    const matchesSearch = p.title.toLowerCase().includes(problemSearch.toLowerCase())
+    const matchesDiff = problemDifficulty === 'all' || p.difficulty === problemDifficulty
+    return matchesSearch && matchesDiff
+  })
+
+  const filteredCandidates = availableCandidates.filter(c => {
+    const searchLower = candidateSearch.toLowerCase()
+    return c.name.toLowerCase().includes(searchLower) || c.email.toLowerCase().includes(searchLower)
+  })
+
+  // 為了效能，清單最多顯示 50 筆
+  const displayProblems = filteredProblems.slice(0, 50)
+  const displayCandidates = filteredCandidates.slice(0, 50)
+
+  // ── 互動邏輯 ──
   const toggleProblem = (id: string) => {
-    setSelectedProblems(prev => 
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-    )
+    setSelectedProblems(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id])
   }
 
   const toggleCandidate = (id: string) => {
-    setSelectedCandidates(prev => 
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-    )
+    setSelectedCandidates(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id])
+  }
+
+  const handleSelectAllProblems = () => {
+    // 找出目前「符合過濾條件」且「還沒被選」的 ID
+    const newIds = filteredProblems.map(p => p.problem_id).filter(id => !selectedProblems.includes(id))
+    setSelectedProblems(prev => [...prev, ...newIds])
+  }
+
+  const handleDeselectAllProblems = () => {
+    // 找出目前「符合過濾條件」且「已經被選」的 ID
+    const idsToRemove = filteredProblems.map(p => p.problem_id)
+    setSelectedProblems(prev => prev.filter(id => !idsToRemove.includes(id)))
+  }
+
+  const handleSelectAllCandidates = () => {
+    const newIds = filteredCandidates.map(c => c.user_id).filter(id => !selectedCandidates.includes(id))
+    setSelectedCandidates(prev => [...prev, ...newIds])
+  }
+
+  const handleDeselectAllCandidates = () => {
+    const idsToRemove = filteredCandidates.map(c => c.user_id)
+    setSelectedCandidates(prev => prev.filter(id => !idsToRemove.includes(id)))
   }
 
   const handleSubmit = () => {
@@ -80,17 +123,19 @@ function CreateExamModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-2xl rounded-xl border border-oj-border bg-oj-surface p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-oj-fg">Create Exam</h2>
-          <button onClick={onClose} className="text-oj-fg-muted hover:text-oj-fg">×</button>
+      <div className="w-full max-w-4xl rounded-xl border border-oj-border bg-oj-surface p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-oj-fg">Create New Exam</h2>
+          <button onClick={onClose} className="text-oj-fg-muted hover:text-oj-fg transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Exam Information */}
-          <div className="space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* === 左半邊：基本資訊 === */}
+          <div className="space-y-4">
             <label className="block">
-              <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Title</span>
+              <span className="text-xs text-oj-fg-muted font-mono mb-1 block uppercase tracking-wider">Title</span>
               <input
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -100,17 +145,18 @@ function CreateExamModal({
             </label>
             
             <label className="block">
-              <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Description</span>
+              <span className="text-xs text-oj-fg-muted font-mono mb-1 block uppercase tracking-wider">Description</span>
               <textarea
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                className={`${inputCls} min-h-[60px] resize-y`}
+                className={`${inputCls} min-h-[80px] resize-y`}
+                placeholder="Details about this exam..."
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <label className="block">
-                <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Start Time</span>
+                <span className="text-xs text-oj-fg-muted font-mono mb-1 block uppercase tracking-wider">Start Time</span>
                 <input
                   type="datetime-local"
                   value={form.start_time}
@@ -119,7 +165,7 @@ function CreateExamModal({
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-oj-fg-muted font-mono mb-1 block">End Time</span>
+                <span className="text-xs text-oj-fg-muted font-mono mb-1 block uppercase tracking-wider">End Time</span>
                 <input
                   type="datetime-local"
                   value={form.end_time}
@@ -129,71 +175,142 @@ function CreateExamModal({
               </label>
             </div>
             
-            <label className="flex items-center gap-2 mt-2">
+            <label className="flex items-center gap-2 mt-4 pt-2 cursor-pointer group"> {/* 添加 pt-2、cursor-pointer 和 group */}
               <input 
                 type="checkbox" 
                 checked={form.show_score}
                 onChange={(e) => setForm((f) => ({ ...f, show_score: e.target.checked }))}
-                className="accent-oj-accent rounded bg-oj-surface2 border-oj-border"
+                className="accent-oj-accent rounded bg-oj-surface2 border border-oj-border w-5 h-5 cursor-pointer" // 略微放大並添加邊框和光標
               />
-              <span className="text-sm text-oj-fg">Show scores to candidates</span>
+              <span className="text-sm text-oj-fg select-none group-hover:text-oj-fg transition-colors">Show scores to candidates</span> {/* 添加 select-none */}
             </label>
           </div>
 
-          {/* Assigning problems and candidates */}
-          <div className="space-y-4 border-t md:border-t-0 md:border-l border-oj-border md:pl-6 pt-4 md:pt-0">
-            <div>
-              <span className="text-xs text-oj-fg-muted font-mono mb-2 block">Assign Problems ({selectedProblems.length})</span>
-              <div className="max-h-32 overflow-y-auto bg-oj-surface2 rounded border border-oj-border p-2 space-y-1">
-                {availableProblems.map(p => (
-                  <label key={p.problem_id} className="flex items-center gap-2 cursor-pointer hover:bg-oj-bg p-1 rounded">
+          {/* === 右半邊：指派區塊 === */}
+          <div className="space-y-6 lg:border-l border-oj-border lg:pl-8">
+            
+            {/* --- 題目指派 --- */}
+            <div className="flex flex-col h-[280px]"> 
+              <div className="flex items-end justify-between mb-2">
+                <span className="text-xs text-oj-fg-muted font-mono uppercase tracking-wider">
+                  Problems <span className="text-oj-accent ml-1">({selectedProblems.length} selected)</span>
+                </span>
+                <div className="flex gap-2">
+                  <button onClick={handleSelectAllProblems} className="text-xs text-oj-accent hover:underline">Select All</button>
+                  <span className="text-oj-border">|</span>
+                  <button onClick={handleDeselectAllProblems} className="text-xs text-oj-fg-muted hover:underline">Clear</button>
+                </div>
+              </div>
+              
+              {/* 搜尋與過濾列 */}
+              <div className="flex gap-2 mb-2 shrink-0 w-full">
+                {/* 左邊搜尋框佔滿剩餘空間 */}
+                <div className="flex-1 min-w-0">
+                  <input 
+                    type="text" 
+                    placeholder="Search problems..." 
+                    value={problemSearch}
+                    onChange={e => setProblemSearch(e.target.value)}
+                    className={`${inputCls} py-1 text-xs`}
+                  />
+                </div>
+                {/* 右邊下拉選單固定寬度 */}
+                <div className="w-[100px] shrink-0">
+                  <select 
+                    value={problemDifficulty} 
+                    onChange={e => setProblemDifficulty(e.target.value)}
+                    className={`${inputCls} py-1 text-xs cursor-pointer`}
+                  >
+                    <option value="all">All Diff</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 清單 */}
+              <div className="flex-1 overflow-y-auto bg-oj-surface2 rounded border border-oj-border p-2 space-y-1">
+                {displayProblems.map(p => (
+                  <label key={p.problem_id} className="flex items-center gap-3 cursor-pointer hover:bg-oj-bg p-1.5 rounded transition-colors border border-transparent hover:border-oj-border">
                     <input 
                       type="checkbox" 
                       checked={selectedProblems.includes(p.problem_id)}
                       onChange={() => toggleProblem(p.problem_id)}
-                      className="accent-oj-accent"
+                      className="accent-oj-accent shrink-0"
                     />
-                    <span className="text-sm text-oj-fg truncate">{p.title}</span>
+                    <span className="text-sm text-oj-fg truncate flex-1">{p.title}</span>
+                    <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-mono ${p.difficulty === 'easy' ? 'bg-green-900/40 text-green-400' : p.difficulty === 'medium' ? 'bg-yellow-900/40 text-yellow-400' : 'bg-red-900/40 text-red-400'}`}>
+                      {p.difficulty}
+                    </span>
                   </label>
                 ))}
-                {availableProblems.length === 0 && <span className="text-xs text-oj-fg-muted">No problems available.</span>}
+                {filteredProblems.length === 0 && <div className="text-xs text-oj-fg-muted p-2 text-center">No matching problems found.</div>}
+                {filteredProblems.length > 50 && <div className="text-xs text-oj-fg-muted p-2 text-center border-t border-oj-border mt-2 pt-2">Showing 50 of {filteredProblems.length}. Use search to narrow down.</div>}
               </div>
             </div>
 
-            <div>
-              <span className="text-xs text-oj-fg-muted font-mono mb-2 block">Assign Candidates ({selectedCandidates.length})</span>
-              <div className="max-h-32 overflow-y-auto bg-oj-surface2 rounded border border-oj-border p-2 space-y-1">
-                {availableCandidates.map(c => (
-                  <label key={c.user_id} className="flex items-center gap-2 cursor-pointer hover:bg-oj-bg p-1 rounded">
+            {/* --- 考生指派 --- */}
+            <div className="flex flex-col h-[280px]">
+              <div className="flex items-end justify-between mb-2">
+                <span className="text-xs text-oj-fg-muted font-mono uppercase tracking-wider">
+                  Candidates <span className="text-oj-accent ml-1">({selectedCandidates.length} selected)</span>
+                </span>
+                <div className="flex gap-2">
+                  <button onClick={handleSelectAllCandidates} className="text-xs text-oj-accent hover:underline">Select All</button>
+                  <span className="text-oj-border">|</span>
+                  <button onClick={handleDeselectAllCandidates} className="text-xs text-oj-fg-muted hover:underline">Clear</button>
+                </div>
+              </div>
+              
+              {/* 搜尋列 */}
+              <div className="mb-2 shrink-0">
+                <input 
+                  type="text" 
+                  placeholder="Search name or email..." 
+                  value={candidateSearch}
+                  onChange={e => setCandidateSearch(e.target.value)}
+                  className={`${inputCls} py-1 text-xs`}
+                />
+              </div>
+
+              {/* 清單 */}
+              <div className="flex-1 overflow-y-auto bg-oj-surface2 rounded border border-oj-border p-2 space-y-1">
+                {displayCandidates.map(c => (
+                  <label key={c.user_id} className="flex items-center gap-3 cursor-pointer hover:bg-oj-bg p-1.5 rounded transition-colors border border-transparent hover:border-oj-border">
                     <input 
                       type="checkbox" 
                       checked={selectedCandidates.includes(c.user_id)}
                       onChange={() => toggleCandidate(c.user_id)}
-                      className="accent-oj-accent"
+                      className="accent-oj-accent shrink-0"
                     />
-                    <span className="text-sm text-oj-fg truncate">{c.name} <span className="text-xs text-oj-fg-muted">({c.email})</span></span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm text-oj-fg truncate font-medium">{c.name}</span>
+                      <span className="text-xs text-oj-fg-muted font-mono truncate">{c.email}</span>
+                    </div>
                   </label>
                 ))}
-                {availableCandidates.length === 0 && <span className="text-xs text-oj-fg-muted">No candidates available.</span>}
+                {filteredCandidates.length === 0 && <div className="text-xs text-oj-fg-muted p-2 text-center">No matching candidates found.</div>}
+                {filteredCandidates.length > 50 && <div className="text-xs text-oj-fg-muted p-2 text-center border-t border-oj-border mt-2 pt-2">Showing 50 of {filteredCandidates.length}. Use search to narrow down.</div>}
               </div>
             </div>
+
           </div>
         </div>
 
-        {error && <p className="text-red-400 text-sm font-mono mt-3">{error}</p>}
+        {error && <div className="bg-red-900/20 border border-red-900/50 text-red-400 p-3 rounded-md text-sm font-mono mt-6">{error}</div>}
 
-        <div className="flex justify-end gap-2 mt-6">
+        <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-oj-border">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded-md text-sm text-oj-fg-muted hover:bg-oj-surface2"
+            className="px-4 py-2 rounded-md text-sm font-medium text-oj-fg-muted hover:text-oj-fg hover:bg-oj-surface2 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={saving || !form.title}
-            className="px-4 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
-                       hover:bg-oj-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 rounded-md text-sm font-bold bg-oj-accent text-oj-bg hover:bg-oj-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {saving ? 'Creating…' : 'Create Exam'}
           </button>
