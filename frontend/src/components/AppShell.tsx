@@ -8,9 +8,13 @@ import type { UserOut } from '../types/auth'
 
 const NAV_LINKS: Record<UserOut['role'], { label: string; to: string }[]> = {
   candidate:     [{ label: 'My Exams', to: '/exams' }],
-  interviewer:   [{ label: 'Exams', to: '/exams' }, { label: 'New Exam', to: '/exams/new' }],
+  interviewer:   [{ label: 'Exams', to: '/interviewer' }],
   problem_admin: [{ label: 'Problems', to: '/problems' }],
-  admin:         [{ label: 'Users', to: '/admin/users' }, { label: 'Exams', to: '/exams' }, { label: 'Problems', to: '/problems' }],
+  admin:         [
+                   { label: 'Users', to: '/admin/users' }, 
+                   { label: 'Problems', to: '/problems' },
+                   { label: 'Exams', to: '/interviewer' }
+                 ],
 }
 
 const ROLE_LABEL: Record<UserOut['role'], string> = {
