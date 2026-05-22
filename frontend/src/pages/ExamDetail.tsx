@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiGetExam, apiUpdateExam, apiDeleteExam, apiListExamProblems, apiListExamAssignments, apiCreateExamAssignment, apiDeleteExamAssignment } from '../api/exams';
+import { apiGetExam, apiUpdateExam, apiDeleteExam, apiListExamProblems, apiListAssignments, apiCreateAssignment, apiDeleteAssignment } from '../api/exams';
 import { apiListProblems } from '../api/problems';
 import { apiListAdminUsers } from '../api/admin';
 import { useAuth } from '../hooks/useAuth';
@@ -52,7 +52,7 @@ export default function ExamDetail() {
         apiListExamProblems(currentToken, id),
         apiListProblems(currentToken),
         apiListAdminUsers(currentToken, { role: 'candidate', pageSize: 100 }),
-        apiListExamAssignments(currentToken, id)
+        apiListAssignments(currentToken, id)
       ]);
       
       setExam(examData);
@@ -179,7 +179,7 @@ export default function ExamDetail() {
         if (!currentAssignments.has(expectedKey)) {
           const [cId, pId] = expectedKey.split('_');
           promises.push(
-            apiCreateExamAssignment(token, examId, { candidate_id: cId, problem_id: pId })
+            apiCreateAssignment(token, examId, { candidate_id: cId, problem_id: pId })
           );
         }
       }
@@ -187,7 +187,7 @@ export default function ExamDetail() {
       for (const [currentKey, assignmentId] of currentAssignments.entries()) {
         if (!expectedAssignments.has(currentKey)) {
           promises.push(
-            apiDeleteExamAssignment(token, examId, assignmentId)
+            apiDeleteAssignment(token, examId, assignmentId)
           );
         }
       }

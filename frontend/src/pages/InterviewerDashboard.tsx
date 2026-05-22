@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { apiListExams, apiCreateExam, CreateExamSchema } from '../api/exams'
+import { apiListExams, apiCreateExam } from '../api/exams'
+import type { Exam, ExamCreate } from '../types/exam'
 import { apiListProblems } from '../api/problems'
 import { apiListAdminUsers } from '../api/admin'
 import { useAuth } from '../hooks/useAuth'
-import type { Exam } from '../types/exam'
 
 const inputCls = `w-full bg-oj-surface2 border border-oj-border rounded px-3 py-1.5
                   text-sm text-oj-fg focus:outline-none focus:ring-1 focus:ring-oj-accent`
 
-const EMPTY_CREATE_FORM: CreateExamSchema = {
+const EMPTY_CREATE_FORM: ExamCreate = {
   title: '',
   description: '',
   start_time: '',
@@ -34,9 +34,9 @@ function CreateExamModal({
   availableProblems: any[]
   availableCandidates: any[]
   onClose: () => void
-  onSubmit: (payload: CreateExamSchema, problemIds: string[], candidateIds: string[]) => Promise<void>
+  onSubmit: (payload: ExamCreate, problemIds: string[], candidateIds: string[]) => Promise<void>
 }) {
-  const [form, setForm] = useState<CreateExamSchema>(EMPTY_CREATE_FORM)
+  const [form, setForm] = useState<ExamCreate>(EMPTY_CREATE_FORM)
   const [selectedProblems, setSelectedProblems] = useState<string[]>([])
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
 
@@ -368,7 +368,7 @@ export default function InterviewerDashboard() {
   }, [token])
 
 
-  const handleCreate = async (payload: CreateExamSchema, problemIds: string[], candidateIds: string[]) => {
+  const handleCreate = async (payload: ExamCreate, problemIds: string[], candidateIds: string[]) => {
     if (!token) return
     setCreating(true)
     setCreateError(null)
