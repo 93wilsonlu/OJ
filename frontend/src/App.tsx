@@ -11,6 +11,8 @@ import ProblemEditor from './pages/ProblemEditor'
 import SubmissionStatus from './pages/SubmissionStatus'
 import ProblemsPage from './pages/ProblemsPage'
 import ProblemDetailPage from './pages/ProblemDetailPage'
+import ProblemViewPage from './pages/ProblemViewPage'
+import ExamManagePage from './pages/ExamManagePage'
 import UserManagement from './pages/UserManagement'
 import NotFound from './pages/NotFound'
 import ErrorPage from './pages/ErrorPage'
@@ -59,19 +61,35 @@ export default function App() {
             }
           />
 
-          {/* Candidate */}
+          {/* Candidate + Interviewer */}
           <Route
             path="/exams"
             element={
-              <Protected roles={['candidate', 'interviewer']}>
+              <Protected roles={['candidate', 'interviewer', 'admin']}>
                 <CandidateDashboard />
+              </Protected>
+            }
+          />
+          <Route
+            path="/exams/new"
+            element={
+              <Protected roles={['interviewer', 'admin']}>
+                <ExamManagePage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/exams/:examId/manage"
+            element={
+              <Protected roles={['interviewer', 'admin']}>
+                <ExamManagePage />
               </Protected>
             }
           />
           <Route
             path="/exams/:examId"
             element={
-              <Protected roles={['candidate', 'interviewer']}>
+              <Protected roles={['candidate', 'interviewer', 'admin']}>
                 <ExamView />
               </Protected>
             }
@@ -107,6 +125,14 @@ export default function App() {
             element={
               <Protected roles={['problem_admin', 'admin']}>
                 <ProblemDetailPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/problems/:problemId/view"
+            element={
+              <Protected roles={['interviewer', 'problem_admin', 'admin']}>
+                <ProblemViewPage />
               </Protected>
             }
           />
