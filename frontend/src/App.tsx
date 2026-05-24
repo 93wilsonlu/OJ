@@ -18,12 +18,14 @@ import SubmissionsPage from './pages/SubmissionsPage'
 import UserManagement from './pages/UserManagement'
 import NotFound from './pages/NotFound'
 import ErrorPage from './pages/ErrorPage'
+import InterviewerDashboard from './pages/InterviewerDashboard';
+import ExamDetail from './pages/ExamDetail';
 import type { UserOut } from './types/auth'
 
 // ── stub placeholders — replaced in later phases ──────────────────────────────
-function Stub({ label }: { label: string }) {
-  return <div className="p-8 text-oj-fg font-mono text-sm text-oj-fg-muted">{label}</div>
-}
+// function Stub({ label }: { label: string }) {
+//   return <div className="p-8 text-oj-fg font-mono text-sm text-oj-fg-muted">{label}</div>
+// }
 
 // ── layout helper ─────────────────────────────────────────────────────────────
 
@@ -158,7 +160,17 @@ export default function App() {
             path="/interviewer"
             element={
               <Protected roles={['interviewer', 'problem_admin', 'admin']}>
-                <Stub label="Interviewer Dashboard (Phase 7)" />
+                <InterviewerDashboard />
+              </Protected>
+            }
+          />
+
+          {/* 新增這個動態路由，讓 /interviewer/:examId 可以連到詳細頁面 */}
+          <Route
+            path="/interviewer/:examId"
+            element={
+              <Protected roles={['interviewer', 'problem_admin', 'admin']}>
+                <ExamDetail />
               </Protected>
             }
           />

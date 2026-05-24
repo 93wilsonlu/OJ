@@ -13,7 +13,7 @@ export async function apiListExams(token: string): Promise<Exam[]> {
   const res = await fetch(`${BASE}/exams`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!res.ok) throw new Error('Failed to fetch exams')
+  await throwOnError(res)
   return res.json()
 }
 
@@ -21,7 +21,7 @@ export async function apiGetExam(token: string, examId: string): Promise<Exam> {
   const res = await fetch(`${BASE}/exams/${examId}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!res.ok) throw new Error('Exam not found')
+  await throwOnError(res)
   return res.json()
 }
 
@@ -57,7 +57,7 @@ export async function apiListExamProblems(token: string, examId: string): Promis
   const res = await fetch(`${BASE}/exams/${examId}/problems`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!res.ok) throw new Error('Failed to fetch exam problems')
+  await throwOnError(res)
   return res.json()
 }
 

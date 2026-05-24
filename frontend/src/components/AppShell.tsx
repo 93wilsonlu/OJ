@@ -12,9 +12,8 @@ const NAV_LINKS: Record<UserOut['role'], { label: string; to: string }[]> = {
     { label: 'Submissions', to: '/submissions' },
   ],
   interviewer: [
-    { label: 'Exams', to: '/exams' },
+    { label: 'Exams', to: '/interviewer' },
     { label: 'Submissions', to: '/submissions' },
-    { label: 'New Exam', to: '/exams/new' },
   ],
   problem_admin: [
     { label: 'Problems', to: '/problems' },
@@ -22,7 +21,7 @@ const NAV_LINKS: Record<UserOut['role'], { label: string; to: string }[]> = {
   ],
   admin: [
     { label: 'Users', to: '/admin/users' },
-    { label: 'Exams', to: '/exams' },
+    { label: 'Exams', to: '/interviewer' },
     { label: 'Problems', to: '/problems' },
     { label: 'Submissions', to: '/submissions' },
   ],
