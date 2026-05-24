@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
@@ -8,13 +9,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
 from app.models.judge_result import JudgeResult
+from app.models.problem import Problem
 from app.models.submission import Submission
+from app.models.user import User
 from app.schemas.submission import SubmissionCreate
 from app.services import queue as queue_service
 from app.services import storage
 
 RATE_LIMIT_SECONDS = 30
 _LANG_EXT = {"python3": "py", "cpp17": "cpp"}
+
+
+@dataclass
+class SubmissionListRow:
+    submission: Submission
+    judge_result: JudgeResult | None
+    problem_title: str
+    candidate_name: str
+    candidate_email: str
+    exam_show_score: bool
 
 
 async def _check_assignment(
@@ -120,8 +133,14 @@ async def list_submissions(
     requester_role: str,
     exam_id: uuid.UUID | None = None,
     candidate_id: uuid.UUID | None = None,
-) -> list[Submission]:
-    stmt = select(Submission)
+) -> list[SubmissionListRow]:
+    stmt = (
+        select(Submission, JudgeResult, Problem, User, Exam)
+        .join(Problem, Submission.problem_id == Problem.problem_id)
+        .join(User, Submission.candidate_id == User.user_id)
+        .join(Exam, Submission.exam_id == Exam.exam_id)
+        .outerjoin(JudgeResult, JudgeResult.submission_id == Submission.submission_id)
+    )
 
     if requester_role == "candidate":
         stmt = stmt.where(Submission.candidate_id == requester_id)
@@ -133,4 +152,14 @@ async def list_submissions(
 
     stmt = stmt.order_by(Submission.submitted_at.desc())
     result = await db.execute(stmt)
-    return list(result.scalars())
+    return [
+        SubmissionListRow(
+            submission=submission,
+            judge_result=judge_result,
+            problem_title=problem.title,
+            candidate_name=candidate.name,
+            candidate_email=candidate.email,
+            exam_show_score=exam.show_score,
+        )
+        for submission, judge_result, problem, candidate, exam in result.all()
+    ]

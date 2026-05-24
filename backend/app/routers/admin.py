@@ -11,13 +11,16 @@ from app.schemas.admin import (
     AdminUserListOut,
     AdminUserOut,
     AdminUserUpdate,
+    ExamCandidateResultOut,
+    ExamProblemResultOut,
+    ExamResultsOut,
 )
 from app.services import admin as admin_service
 
-router = APIRouter(prefix="/admin/users", tags=["admin-users"])
+router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.post("", response_model=AdminUserOut, status_code=201)
+@router.post("/users", response_model=AdminUserOut, status_code=201)
 async def create_user(
     body: AdminUserCreate,
     current_user: User = Depends(get_current_user),
@@ -27,7 +30,7 @@ async def create_user(
     return AdminUserOut.model_validate(user)
 
 
-@router.get("", response_model=AdminUserListOut)
+@router.get("/users", response_model=AdminUserListOut)
 async def list_users(
     role: str | None = Query(default=None),
     name: str | None = Query(default=None),
@@ -55,7 +58,7 @@ async def list_users(
     )
 
 
-@router.get("/{user_id}", response_model=AdminUserOut)
+@router.get("/users/{user_id}", response_model=AdminUserOut)
 async def get_user(
     user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
@@ -65,7 +68,7 @@ async def get_user(
     return AdminUserOut.model_validate(user)
 
 
-@router.patch("/{user_id}", response_model=AdminUserOut)
+@router.patch("/users/{user_id}", response_model=AdminUserOut)
 async def update_user(
     user_id: uuid.UUID,
     body: AdminUserUpdate,
@@ -76,7 +79,7 @@ async def update_user(
     return AdminUserOut.model_validate(user)
 
 
-@router.delete("/{user_id}", status_code=204)
+@router.delete("/users/{user_id}", status_code=204)
 async def deactivate_user(
     user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
@@ -84,3 +87,35 @@ async def deactivate_user(
 ):
     await admin_service.deactivate_user(db, current_user, user_id)
     return Response(status_code=204)
+
+
+@router.get("/exams/{exam_id}/results", response_model=ExamResultsOut)
+async def get_exam_results(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    results = await admin_service.get_exam_results(db, current_user, exam_id)
+    return ExamResultsOut(
+        exam_id=results.exam_id,
+        title=results.title,
+        candidates=[
+            ExamCandidateResultOut(
+                candidate_id=candidate.candidate_id,
+                name=candidate.name,
+                email=candidate.email,
+                total_score=candidate.total_score,
+                problems=[
+                    ExamProblemResultOut(
+                        problem_id=problem.problem_id,
+                        title=problem.title,
+                        best_score=problem.best_score,
+                        submission_count=problem.submission_count,
+                        latest_verdict=problem.latest_verdict,
+                    )
+                    for problem in candidate.problems
+                ],
+            )
+            for candidate in results.candidates
+        ],
+    )

@@ -7,14 +7,24 @@ import type { UserOut } from '../types/auth'
 // ── nav links per role ────────────────────────────────────────────────────────
 
 const NAV_LINKS: Record<UserOut['role'], { label: string; to: string }[]> = {
-  candidate:     [{ label: 'My Exams', to: '/exams' }],
-  interviewer:   [{ label: 'Exams', to: '/interviewer' }],
-  problem_admin: [{ label: 'Problems', to: '/problems' }],
-  admin:         [
-                   { label: 'Users', to: '/admin/users' }, 
-                   { label: 'Problems', to: '/problems' },
-                   { label: 'Exams', to: '/interviewer' }
-                 ],
+  candidate: [
+    { label: 'My Exams', to: '/exams' },
+    { label: 'Submissions', to: '/submissions' },
+  ],
+  interviewer: [
+    { label: 'Exams', to: '/interviewer' },
+    { label: 'Submissions', to: '/submissions' },
+  ],
+  problem_admin: [
+    { label: 'Problems', to: '/problems' },
+    { label: 'Submissions', to: '/submissions' },
+  ],
+  admin: [
+    { label: 'Users', to: '/admin/users' },
+    { label: 'Exams', to: '/interviewer' },
+    { label: 'Problems', to: '/problems' },
+    { label: 'Submissions', to: '/submissions' },
+  ],
 }
 
 const ROLE_LABEL: Record<UserOut['role'], string> = {

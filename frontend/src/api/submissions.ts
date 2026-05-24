@@ -1,4 +1,4 @@
-import type { Submission, SubmissionDetail } from '../types/submission'
+import type { Submission, SubmissionDetail, SubmissionListItem } from '../types/submission'
 
 const BASE = '/api/v1'
 
@@ -34,7 +34,7 @@ export async function apiGetSubmission(token: string, submissionId: string): Pro
 export async function apiListSubmissions(
   token: string,
   params?: { exam_id?: string; candidate_id?: string },
-): Promise<Submission[]> {
+): Promise<SubmissionListItem[]> {
   const url = new URL(`${BASE}/submissions`, window.location.origin)
   if (params?.exam_id) url.searchParams.set('exam_id', params.exam_id)
   if (params?.candidate_id) url.searchParams.set('candidate_id', params.candidate_id)

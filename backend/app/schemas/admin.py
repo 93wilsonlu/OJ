@@ -38,3 +38,25 @@ class AdminUserListOut(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class ExamProblemResultOut(BaseModel):
+    problem_id: uuid.UUID
+    title: str
+    best_score: float | None
+    submission_count: int
+    latest_verdict: str | None
+
+
+class ExamCandidateResultOut(BaseModel):
+    candidate_id: uuid.UUID
+    name: str
+    email: EmailStr
+    problems: list[ExamProblemResultOut]
+    total_score: float
+
+
+class ExamResultsOut(BaseModel):
+    exam_id: uuid.UUID
+    title: str
+    candidates: list[ExamCandidateResultOut]
