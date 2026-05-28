@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
 RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
     && cd /tmp/isolate \
     && make install \
+    && sed -i 's|auto:/run/isolate/cgroup|/sys/fs/cgroup|' /usr/local/etc/isolate \
     && rm -rf /tmp/isolate
 
 WORKDIR /app

@@ -75,8 +75,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    cap_add:
-      - SYS_ADMIN
+    privileged: true
     security_opt:
       - seccomp:unconfined
 
