@@ -10,10 +10,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 WITH sample_candidates(user_id, name, email) AS (
     VALUES
-        ('11111111-1111-4111-8111-111111111111'::uuid, 'Alice Candidate', 'alice.candidate@example.test'),
-        ('22222222-2222-4222-8222-222222222222'::uuid, 'Bob Candidate', 'bob.candidate@example.test'),
-        ('33333333-3333-4333-8333-333333333333'::uuid, 'Carol Candidate', 'carol.candidate@example.test'),
-        ('44444444-4444-4444-8444-444444444444'::uuid, 'David Candidate', 'david.candidate@example.test')
+        ('11111111-1111-4111-8111-111111111111'::uuid, 'Alice Candidate', 'alice.candidate@example.com'),
+        ('22222222-2222-4222-8222-222222222222'::uuid, 'Bob Candidate', 'bob.candidate@example.com'),
+        ('33333333-3333-4333-8333-333333333333'::uuid, 'Carol Candidate', 'carol.candidate@example.com'),
+        ('44444444-4444-4444-8444-444444444444'::uuid, 'David Candidate', 'david.candidate@example.com')
 )
 INSERT INTO users (user_id, name, email, password_hash, role, is_active, created_at, updated_at)
 SELECT
@@ -187,17 +187,17 @@ SET
 
 WITH picked_assignments(candidate_email, problem_id, assigned_difficulty) AS (
     VALUES
-        ('alice.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid, 'easy'),
-        ('alice.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3'::uuid, 'medium'),
-        ('alice.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5'::uuid, 'hard'),
-        ('bob.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid, 'easy'),
-        ('bob.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2'::uuid, 'easy'),
-        ('bob.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4'::uuid, 'medium'),
-        ('carol.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2'::uuid, 'easy'),
-        ('carol.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3'::uuid, 'medium'),
-        ('david.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid, 'easy'),
-        ('david.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4'::uuid, 'medium'),
-        ('david.candidate@example.test', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5'::uuid, 'hard')
+        ('alice.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid, 'easy'),
+        ('alice.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3'::uuid, 'medium'),
+        ('alice.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5'::uuid, 'hard'),
+        ('bob.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid, 'easy'),
+        ('bob.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2'::uuid, 'easy'),
+        ('bob.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4'::uuid, 'medium'),
+        ('carol.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2'::uuid, 'easy'),
+        ('carol.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3'::uuid, 'medium'),
+        ('david.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid, 'easy'),
+        ('david.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4'::uuid, 'medium'),
+        ('david.candidate@example.com', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5'::uuid, 'hard')
 )
 INSERT INTO exam_assignments (
     assignment_id,
