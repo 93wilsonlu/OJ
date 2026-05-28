@@ -3,6 +3,20 @@ import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function metricValue(value: number | null | undefined, suffix = '') {
+  if (value === null || value === undefined) return '-'
+  return `${value}${suffix}`
+}
+
 export default function SubmissionStatus() {
   const { submissionId } = useParams<{ submissionId: string }>()
   const { getAccessToken } = useAuth()
@@ -13,70 +27,61 @@ export default function SubmissionStatus() {
   }
 
   if (!data) {
-    return <div className="p-8 text-oj-fg-muted text-sm font-mono animate-pulse">Loading…</div>
+    return <div className="p-8 text-oj-fg-muted text-sm font-mono animate-pulse">Loading...</div>
   }
 
   const jr = data.judge_result
+  const displayVerdict = jr?.verdict ?? data.status
+  const isRunning = (data.status === 'pending' || data.status === 'judging') && !jr
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 font-mono text-sm">
-      <h1 className="text-oj-fg text-base font-semibold mb-4">Submission</h1>
+    <div className="mx-auto max-w-3xl px-4 py-8">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold text-oj-fg">Submission</h1>
+          <p className="mt-1 text-sm text-oj-fg-muted font-mono">{data.submission_id}</p>
+        </div>
+        <VerdictBadge verdict={displayVerdict} showFull />
+      </div>
 
-      <dl className="space-y-2">
-        <div className="flex gap-4">
-          <dt className="text-oj-fg-muted w-32 shrink-0">ID</dt>
-          <dd className="text-oj-fg truncate">{data.submission_id}</dd>
-        </div>
-        <div className="flex gap-4">
-          <dt className="text-oj-fg-muted w-32 shrink-0">Language</dt>
-          <dd className="text-oj-fg">{data.language}</dd>
-        </div>
-        <div className="flex gap-4">
-          <dt className="text-oj-fg-muted w-32 shrink-0">Status</dt>
-          <dd className="text-oj-fg capitalize">{data.status}</dd>
-        </div>
-      </dl>
+      <section className="rounded-lg border border-oj-border bg-oj-surface">
+        <dl className="divide-y divide-oj-border text-sm">
+          <InfoRow label="Language" value={data.language} />
+          <InfoRow label="Submitted" value={formatDate(data.submitted_at)} />
+          <InfoRow label="Status" value={data.status} />
+          <InfoRow label="Score" value={metricValue(jr?.score)} />
+          <InfoRow
+            label="Passed"
+            value={jr?.passed_count === null || jr?.passed_count === undefined ? '-' : `${jr.passed_count} / ${jr.total_count}`}
+          />
+          <InfoRow label="Time" value={metricValue(jr?.execution_time, ' ms')} />
+          <InfoRow label="Memory" value={metricValue(jr?.memory_usage, ' KB')} />
+        </dl>
+      </section>
 
-      {jr && (
-        <div className="mt-6 p-4 rounded-lg bg-oj-surface border border-oj-border space-y-2">
-          <div className="flex gap-4">
-            <span className="text-oj-fg-muted w-32 shrink-0">Verdict</span>
-            <VerdictBadge verdict={jr.verdict} showFull />
-          </div>
-          {jr.score !== null && (
-            <div className="flex gap-4">
-              <span className="text-oj-fg-muted w-32 shrink-0">Score</span>
-              <span className="text-oj-fg">{jr.score}</span>
-            </div>
-          )}
-          {jr.passed_count !== null && (
-            <div className="flex gap-4">
-              <span className="text-oj-fg-muted w-32 shrink-0">Passed</span>
-              <span className="text-oj-fg">{jr.passed_count} / {jr.total_count}</span>
-            </div>
-          )}
-          {jr.execution_time !== null && (
-            <div className="flex gap-4">
-              <span className="text-oj-fg-muted w-32 shrink-0">Time</span>
-              <span className="text-oj-fg">{jr.execution_time} ms</span>
-            </div>
-          )}
-          {jr.error_message && (
-            <div className="mt-2">
-              <p className="text-oj-fg-muted mb-1">Error</p>
-              <pre className="text-red-400 whitespace-pre-wrap text-xs bg-oj-bg p-2 rounded">
-                {jr.error_message}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-
-      {(data.status === 'pending' || data.status === 'judging') && !jr && (
-        <p className="mt-4 text-oj-fg-muted animate-pulse">
-          {data.status === 'pending' ? 'Waiting in queue…' : 'Judging…'}
+      {isRunning && (
+        <p className="mt-4 text-sm text-oj-fg-muted font-mono animate-pulse">
+          {data.status === 'pending' ? 'Waiting in queue...' : 'Judging...'}
         </p>
       )}
+
+      {jr?.error_message && (
+        <section className="mt-5">
+          <h2 className="mb-2 text-sm font-semibold text-oj-fg">Judge Message</h2>
+          <pre className="overflow-auto rounded-lg border border-red-700/50 bg-red-950/30 p-3 text-xs text-red-300 whitespace-pre-wrap">
+            {jr.error_message}
+          </pre>
+        </section>
+      )}
+    </div>
+  )
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-4 px-4 py-3">
+      <dt className="text-oj-fg-muted">{label}</dt>
+      <dd className="min-w-0 truncate text-oj-fg font-mono">{value}</dd>
     </div>
   )
 }

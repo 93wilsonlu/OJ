@@ -96,6 +96,7 @@ describe('ExamView', () => {
     expect(screen.getByText('Start Time')).toBeInTheDocument()
     expect(screen.getByText('End Time')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Problems' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Difficulty' })).not.toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Limits' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Languages' })).toBeInTheDocument()
     expect(screen.getByText('Two Sum')).toBeInTheDocument()

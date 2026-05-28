@@ -7,12 +7,6 @@ import type { Exam, ExamProblem } from '../types/exam'
 
 type ExamStatus = 'Active' | 'Upcoming' | 'Ended'
 
-const DIFFICULTY_STYLE: Record<string, string> = {
-  easy: 'bg-green-900/60 text-green-300 ring-1 ring-green-700',
-  medium: 'bg-yellow-900/60 text-yellow-300 ring-1 ring-yellow-700',
-  hard: 'bg-red-900/60 text-red-300 ring-1 ring-red-700',
-}
-
 const STATUS_STYLE: Record<ExamStatus, string> = {
   Active: 'bg-green-900/60 text-green-300 ring-1 ring-green-700',
   Upcoming: 'bg-blue-900/60 text-blue-300 ring-1 ring-blue-700',
@@ -184,65 +178,53 @@ export default function ExamView() {
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">#</th>
                   <th className="px-4 py-3 text-left font-semibold">Problem</th>
-                  <th className="px-4 py-3 text-left font-semibold">Difficulty</th>
                   <th className="px-4 py-3 text-left font-semibold">Limits</th>
                   <th className="px-4 py-3 text-left font-semibold">Languages</th>
                   <th className="px-4 py-3 text-right font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-oj-border">
-                {problems.map((problem, index) => {
-                  const diffStyle = DIFFICULTY_STYLE[problem.difficulty] ?? ''
-                  return (
-                    <tr key={problem.problem_id} className="hover:bg-oj-muted/60 transition-colors">
-                      <td className="px-4 py-3 text-oj-fg-muted font-mono">
-                        {index + 1}
-                      </td>
-                      <td className="px-4 py-3 min-w-[240px]">
-                        <div className="font-medium text-oj-fg">{problem.title}</div>
-                        <div className="text-xs text-oj-fg-muted font-mono mt-0.5">
-                          {problem.problem_id.slice(0, 8)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full
-                                      text-xs font-medium font-mono capitalize ${diffStyle}`}
+                {problems.map((problem, index) => (
+                  <tr key={problem.problem_id} className="hover:bg-oj-muted/60 transition-colors">
+                    <td className="px-4 py-3 text-oj-fg-muted font-mono">
+                      {index + 1}
+                    </td>
+                    <td className="px-4 py-3 min-w-[240px]">
+                      <div className="font-medium text-oj-fg">{problem.title}</div>
+                      <div className="text-xs text-oj-fg-muted font-mono mt-0.5">
+                        {problem.problem_id.slice(0, 8)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-oj-fg-muted font-mono whitespace-nowrap">
+                      {problem.time_limit} ms / {problem.memory_limit} MB
+                    </td>
+                    <td className="px-4 py-3 text-oj-fg-muted font-mono whitespace-nowrap">
+                      {languageLabel(problem.allowed_langs)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {canSubmit ? (
+                        <Link
+                          to={`/exams/${examId}/problems/${problem.problem_id}`}
+                          className="px-3 py-1.5 rounded-md text-xs font-medium
+                                     bg-oj-accent text-oj-bg hover:bg-oj-accent/90"
                         >
-                          {problem.difficulty}
+                          Solve
+                        </Link>
+                      ) : isStaff ? (
+                        <Link
+                          to={`/problems/${problem.problem_id}/view`}
+                          className="text-xs text-oj-accent hover:underline"
+                        >
+                          View
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-oj-fg-muted font-mono">
+                          {status === 'Upcoming' ? 'Not started' : 'Ended'}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-oj-fg-muted font-mono whitespace-nowrap">
-                        {problem.time_limit} ms / {problem.memory_limit} MB
-                      </td>
-                      <td className="px-4 py-3 text-oj-fg-muted font-mono whitespace-nowrap">
-                        {languageLabel(problem.allowed_langs)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {canSubmit ? (
-                          <Link
-                            to={`/exams/${examId}/problems/${problem.problem_id}`}
-                            className="px-3 py-1.5 rounded-md text-xs font-medium
-                                       bg-oj-accent text-oj-bg hover:bg-oj-accent/90"
-                          >
-                            Solve
-                          </Link>
-                        ) : isStaff ? (
-                          <Link
-                            to={`/problems/${problem.problem_id}/view`}
-                            className="text-xs text-oj-accent hover:underline"
-                          >
-                            View
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-oj-fg-muted font-mono">
-                            {status === 'Upcoming' ? 'Not started' : 'Ended'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
