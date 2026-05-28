@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 # Install isolate build deps
 RUN apt-get update && apt-get install -y \
-    git make gcc pkg-config libcap-dev libseccomp-dev libsystemd-dev \
+    git make gcc g++ pkg-config libcap-dev libseccomp-dev libsystemd-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Build and install isolate
@@ -19,5 +19,6 @@ COPY pyproject.toml .
 RUN uv sync --no-dev
 
 COPY app/ app/
+COPY worker.py .
 
-CMD ["sh", "-c", "uv run rq worker --with-scheduler --url $REDIS_URL"]
+CMD ["sh", "-c", "uv run rq worker judge --with-scheduler --url $REDIS_URL"]
