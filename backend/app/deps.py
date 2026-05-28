@@ -18,15 +18,11 @@ async def get_current_user(
 ) -> User:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    sub = payload.get("sub")
-    if not sub:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    try:
+        sub = payload.get("sub")
+        if not sub:
+            raise ValueError
         user_id = _uuid.UUID(sub)
-    except ValueError:
+    except (JWTError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user = await db.get(User, user_id)

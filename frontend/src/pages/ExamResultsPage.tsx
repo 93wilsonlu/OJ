@@ -4,15 +4,11 @@ import { apiGetExamResults } from '../api/admin'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import type { ExamProblemResult, ExamResults } from '../types/admin'
+import { formatScore } from '../utils/format'
 
 interface ProblemColumn {
   problem_id: string
   title: string
-}
-
-function formatScore(score: number | null) {
-  if (score === null) return '-'
-  return Number.isInteger(score) ? String(score) : score.toFixed(2)
 }
 
 function problemColumns(results: ExamResults | null): ProblemColumn[] {

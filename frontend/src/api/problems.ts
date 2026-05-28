@@ -1,13 +1,7 @@
 import type { Problem, ProblemCreate, ProblemUpdate, TestCase } from '../types/problem'
+import { throwOnError } from './http'
 
 const BASE = '/api/v1'
-
-async function throwOnError(res: Response) {
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`)
-  }
-}
 
 export async function apiListProblems(token: string): Promise<Problem[]> {
   const res = await fetch(`${BASE}/problems`, {

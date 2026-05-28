@@ -140,8 +140,15 @@ async def update_user(
 
     for field, value in updates.items():
         if field == "name":
-            value = value.strip()
-        setattr(user, field, value)
+            setattr(user, field, value.strip())
+        elif field == "password":
+            setattr(user, "password_hash", hash_password(value))
+        elif field == "is_active":
+            if not value and user.user_id == current_user.user_id:
+                raise HTTPException(status_code=403, detail="Cannot deactivate your own account")
+            setattr(user, field, value)
+        else:
+            setattr(user, field, value)
 
     try:
         await db.commit()
@@ -152,7 +159,7 @@ async def update_user(
     return user
 
 
-async def deactivate_user(
+async def delete_user(
     db: AsyncSession,
     current_user: User,
     user_id: uuid.UUID,
@@ -160,10 +167,13 @@ async def deactivate_user(
     _require_admin(current_user)
     user = await get_user(db, current_user, user_id)
     if user.user_id == current_user.user_id:
-        raise HTTPException(status_code=403, detail="Cannot deactivate your own account")
-
-    user.is_active = False
-    await db.commit()
+        raise HTTPException(status_code=403, detail="Cannot delete your own account")
+    try:
+        await db.delete(user)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Cannot delete user with existing data")
 
 
 async def get_exam_results(

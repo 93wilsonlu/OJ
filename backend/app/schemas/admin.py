@@ -18,6 +18,8 @@ class AdminUserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     email: EmailStr | None = None
     role: UserRole | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    is_active: bool | None = None
 
 
 class AdminUserOut(BaseModel):

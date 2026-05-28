@@ -48,8 +48,7 @@ export default function ProblemsPage() {
   const canWrite = user?.role === 'problem_admin' || user?.role === 'admin'
 
   return (
-    <>
-      <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-semibold text-oj-fg">Problems</h1>
           {canWrite && (
@@ -111,7 +110,7 @@ export default function ProblemsPage() {
                             to={`/problems/${p.problem_id}`}
                             className="text-xs text-oj-accent hover:text-oj-accent/80 transition-colors"
                           >
-                            Edit / Test Cases
+                            Edit
                           </Link>
                           <button
                             onClick={() => handleDelete(p.problem_id)}
@@ -128,8 +127,6 @@ export default function ProblemsPage() {
             </table>
           </div>
         )}
-      </div>
-
-    </>
+    </div>
   )
 }

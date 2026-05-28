@@ -297,9 +297,7 @@ function TestCaseForm({
 
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">
-            Input file {isEdit ? '(leave blank to keep)' : '*'}
-          </span>
+          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Input file</span>
           <input
             type="file"
             required={!isEdit}
@@ -310,9 +308,7 @@ function TestCaseForm({
           />
         </label>
         <label className="block">
-          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">
-            Expected output file {isEdit ? '(leave blank to keep)' : '*'}
-          </span>
+          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Expected output file</span>
           <input
             type="file"
             required={!isEdit}

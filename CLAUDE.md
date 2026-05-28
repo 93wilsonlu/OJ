@@ -1,76 +1,65 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-## Repository status
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-**Phases 1–7 are implemented and running.** The stack is live via `docker compose up`. Implementation phase tracker: `PHASES.md`.
+## 1. Think Before Coding
 
-- **Phase 1** — Docker Compose, Nginx, FastAPI app factory, Alembic migrations, MinIO bucket
-- **Phase 2** — Auth (JWT + refresh tokens), role guards, seeded admin, React login + AuthContext
-- **Phase 3** — Problem + TestCase CRUD backend; hidden test case filtering; MinIO file storage
-- **Phase 4** — App shell, navbar, role-based nav, logout
-- **Phase 5** — Exam management + submission intake; ExamManagePage (create/edit exam + assignment management for interviewers), CandidateDashboard, ExamView, ProblemEditor
-- **Phase 6** — Problem editor UI; per-test-case time/memory overrides; test case add/edit/delete modals; ProblemViewPage (read-only problem detail for interviewers)
-- **Phase 7** — User management API + UI; admin CRUD, account deactivation, self-lockout protection
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-**Next:** Phase 8 — Judge Worker (sandboxed compile/run + verdict pipeline).
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
 
-### Running the stack
+## 2. Simplicity First
 
-```bash
-docker compose up -d          # start all services
-docker compose build nginx    # rebuild frontend after frontend changes
-docker compose cp backend/app/. oj-api-1:/app/app && docker compose restart api   # deploy backend changes without rebuild
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
 ```
 
-Migrations (run inside api container):
-```bash
-docker compose exec api alembic upgrade head
-```
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## Planned architecture (from `G7-Architecture Design.md`)
+---
 
-The spec describes a sandboxed online judge with a queue-based judging pipeline. When implementing, preserve these boundaries — they exist for security and scalability reasons, not stylistic ones:
-
-- **Web Frontend** — React + Vite. Talks to the API only via REST.
-- **Reverse proxy / API gateway** — Nginx in front of the API servers.
-- **API Server** — FastAPI + SQLAlchemy. Handles auth, RBAC, problem/exam CRUD, and submission *intake*. **Must never execute candidate code.** On submission it persists a row with status `PENDING` and enqueues a job.
-- **Message Queue** — Redis Queue. Decouples submission intake from judging so the API stays responsive under load.
-- **Judge Worker** — Standalone Python workers, stateless, horizontally scalable. Consume jobs from Redis, fetch code + test cases, run them in a sandbox, write results back to Postgres.
-- **Sandbox Runtime** — Docker container per submission, with CPU / memory / wall-time / process-count / filesystem / network limits. Container is destroyed after each run.
-- **Relational DB** — PostgreSQL. Tables: `users`, `problems`, `test_cases`, `exams`, `exam_assignments`, `submissions`, `judge_results`.
-- **Object Storage** — Holds candidate source code, test-case input/expected-output files, and execution logs. The DB stores only the storage key, not the blob.
-
-### Roles (RBAC)
-
-Three user roles with distinct permissions; check the spec before broadening any endpoint:
-
-- `candidate` — sees only their own assigned exams, submissions, and results.
-- `interviewer` — creates candidate accounts, builds exam sessions, assigns problems, views scores.
-- `problem_admin` — creates and maintains problems and test cases (including hidden ones).
-
-### Non-obvious constraints to respect
-
-- **Hidden test cases (`is_hidden=true`) must never reach the frontend** — not in problem detail responses, not in judge-result detail, not in error messages.
-- **Submission lifecycle is `pending → judging → completed | failed`** and each submission has a unique ID. A submission must not be double-scored; failed worker runs may be retried but the final verdict is written once.
-- **Submit endpoint must return immediately** with the submission ID and `pending` status. The frontend polls (or uses WebSocket) for the final verdict — do not block the HTTP request on judging.
-- **Verdicts** to support: `Accepted`, `Wrong Answer`, `Compile Error`, `Runtime Error`, `Time Limit Exceeded`, `Memory Limit Exceeded`, `System Error`.
-- **Anti-cheat hooks expected by the spec**: per-user submission rate limiting, IP logging on each submission, full submission history retained.
-- **Passwords**: hashed at rest. All API routes except login require auth.
-
-### Submission flow (end-to-end)
-
-1. Candidate submits code via the editor or file upload.
-2. API Server validates auth/role, writes the source blob to Object Storage, inserts a `submissions` row with status `PENDING`, and pushes a job to Redis Queue. Returns `submission_id` + `pending`.
-3. A Judge Worker pops the job, pulls code + test cases from Object Storage, spawns a sandboxed Docker container per run, executes against each test case in order, captures stdout/stderr/time/memory.
-4. Worker compares outputs, computes `passed_count`, `score` (weighted by `score_weight`), and verdict; uploads execution log to Object Storage; inserts a `judge_results` row and flips the submission to `completed` (or `failed` on system error).
-5. Frontend polling surfaces the final result.
-
-## Working in this repo
-
-- The spec is the canonical source of truth for behavior, table schemas, and verdict semantics — read the relevant section of `G7-Architecture Design.md` before designing an endpoint or migration.
-- The spec is written in Traditional Chinese; preserve Chinese identifiers when quoting it, but write code, comments, and commit messages in English unless the user asks otherwise.
-- The file is large (~420KB) because it embeds base64 architecture diagrams at the bottom — read by line range (the prose ends around line 360) rather than loading the whole file.
-- A GitHub Actions CI workflow runs pytest on the backend. Backend tests live in `backend/tests/`. Frontend has no test suite yet.
-- When scaffolding a new component, also propose the matching `make`/`uv`/`npm` scripts rather than assuming they exist.
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

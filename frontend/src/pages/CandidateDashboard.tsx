@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { apiListExams } from '../api/exams'
 import { useAuth } from '../hooks/useAuth'
 import type { Exam } from '../types/exam'
-import type { UserOut } from '../types/auth'
+import { formatDate } from '../utils/format'
 
 function examStatus(exam: Exam): { label: string; style: string } {
   const now = new Date()
@@ -14,16 +14,9 @@ function examStatus(exam: Exam): { label: string; style: string } {
   return { label: 'Active', style: 'bg-green-900/60 text-green-300 ring-1 ring-green-700' }
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
-}
-
 export default function CandidateDashboard() {
   const { user, getAccessToken } = useAuth()
-  const role = (user as UserOut | null)?.role
-  const isInterviewer = role === 'interviewer' || role === 'admin'
+  const isInterviewer = user?.role === 'interviewer' || user?.role === 'admin'
   const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -110,7 +103,7 @@ export default function CandidateDashboard() {
                     </div>
                   </div>
                   <p className="text-xs text-oj-fg-muted mt-1 font-mono">
-                    {fmtDate(exam.start_time)} – {fmtDate(exam.end_time)}
+                    {formatDate(exam.start_time)} – {formatDate(exam.end_time)}
                   </p>
                 </div>
               </li>

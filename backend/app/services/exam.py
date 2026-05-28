@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam
@@ -129,7 +130,7 @@ async def create_assignment(
     db.add(assignment)
     try:
         await db.commit()
-    except Exception:
+    except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Assignment already exists")
     await db.refresh(assignment)

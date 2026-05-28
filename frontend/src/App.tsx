@@ -16,16 +16,11 @@ import ExamManagePage from './pages/ExamManagePage'
 import ExamResultsPage from './pages/ExamResultsPage'
 import SubmissionsPage from './pages/SubmissionsPage'
 import UserManagement from './pages/UserManagement'
+import UserFormPage from './pages/UserFormPage'
 import NotFound from './pages/NotFound'
 import ErrorPage from './pages/ErrorPage'
-import InterviewerDashboard from './pages/InterviewerDashboard';
-import ExamDetail from './pages/ExamDetail';
+import InterviewerDashboard from './pages/InterviewerDashboard'
 import type { UserOut } from './types/auth'
-
-// ── stub placeholders — replaced in later phases ──────────────────────────────
-// function Stub({ label }: { label: string }) {
-//   return <div className="p-8 text-oj-fg font-mono text-sm text-oj-fg-muted">{label}</div>
-// }
 
 // ── layout helper ─────────────────────────────────────────────────────────────
 
@@ -165,22 +160,28 @@ export default function App() {
             }
           />
 
-          {/* 新增這個動態路由，讓 /interviewer/:examId 可以連到詳細頁面 */}
-          <Route
-            path="/interviewer/:examId"
-            element={
-              <Protected roles={['interviewer', 'problem_admin', 'admin']}>
-                <ExamDetail />
-              </Protected>
-            }
-          />
-
           {/* Admin */}
           <Route
             path="/admin/users"
             element={
               <Protected roles={['admin']}>
                 <UserManagement />
+              </Protected>
+            }
+          />
+          <Route
+            path="/admin/users/new"
+            element={
+              <Protected roles={['admin']}>
+                <UserFormPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/admin/users/:userId/edit"
+            element={
+              <Protected roles={['admin']}>
+                <UserFormPage />
               </Protected>
             }
           />

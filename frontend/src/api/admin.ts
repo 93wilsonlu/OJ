@@ -7,14 +7,9 @@ import type {
   AdminUserUpdate,
 } from '../types/admin'
 
-const BASE = '/api/v1'
+import { throwOnError } from './http'
 
-async function throwOnError(res: Response) {
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`)
-  }
-}
+const BASE = '/api/v1'
 
 export async function apiListAdminUsers(
   token: string,
@@ -72,7 +67,15 @@ export async function apiUpdateAdminUser(
   return res.json()
 }
 
-export async function apiDeactivateAdminUser(token: string, userId: string): Promise<void> {
+export async function apiGetAdminUser(token: string, userId: string): Promise<AdminUser> {
+  const res = await fetch(`${BASE}/admin/users/${userId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+  return res.json()
+}
+
+export async function apiDeleteAdminUser(token: string, userId: string): Promise<void> {
   const res = await fetch(`${BASE}/admin/users/${userId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },

@@ -29,6 +29,8 @@ export interface AdminUserUpdate {
   name?: string
   email?: string
   role?: AdminUserRole
+  password?: string
+  is_active?: boolean
 }
 
 export interface ExamProblemResult {

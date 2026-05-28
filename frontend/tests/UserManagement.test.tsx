@@ -126,18 +126,4 @@ describe('UserManagement', () => {
     expect(listUsers).toHaveBeenCalledTimes(2)
   })
 
-  test('deactivates another account after confirmation', async () => {
-    const user = userEvent.setup()
-    mockList()
-    const deactivate = vi.spyOn(adminApi, 'apiDeactivateAdminUser').mockResolvedValue()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-
-    renderPage()
-    await screen.findByDisplayValue('Interviewer User')
-
-    await user.click(screen.getAllByRole('button', { name: 'Deactivate' })[1])
-
-    await waitFor(() => expect(deactivate).toHaveBeenCalledWith('token', 'interviewer-1'))
-    expect(screen.getByText('Inactive')).toBeInTheDocument()
-  })
 })

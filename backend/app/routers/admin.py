@@ -80,12 +80,12 @@ async def update_user(
 
 
 @router.delete("/users/{user_id}", status_code=204)
-async def deactivate_user(
+async def delete_user(
     user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await admin_service.deactivate_user(db, current_user, user_id)
+    await admin_service.delete_user(db, current_user, user_id)
     return Response(status_code=204)
 
 

@@ -4,20 +4,7 @@ import { apiListSubmissions } from '../api/submissions'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import type { SubmissionListItem } from '../types/submission'
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatScore(score: number | null | undefined) {
-  if (score === null || score === undefined) return '-'
-  return Number.isInteger(score) ? String(score) : score.toFixed(2)
-}
+import { formatDate, formatScore } from '../utils/format'
 
 export default function SubmissionsPage() {
   const { user, getAccessToken } = useAuth()
