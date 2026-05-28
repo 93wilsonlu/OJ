@@ -7,13 +7,13 @@ class SandboxError(Exception):
     pass
 
 def init_box(box_id: int) -> str:
-    res = subprocess.run(["isolate", "--init", "--cg", "-b", str(box_id)], capture_output=True, text=True)
+    res = subprocess.run(["isolate", "--init", "-b", str(box_id)], capture_output=True, text=True)
     if res.returncode != 0:
         raise SandboxError(f"Failed to init isolate: {res.stderr}")
     return res.stdout.strip()
 
 def cleanup_box(box_id: int):
-    subprocess.run(["isolate", "--cleanup", "--cg", "-b", str(box_id)], capture_output=True)
+    subprocess.run(["isolate", "--cleanup", "-b", str(box_id)], capture_output=True)
 
 def compile_code(box_id: int, lang: str, code: str, box_dir: str) -> tuple[bool, str]:
     box_root = os.path.join(box_dir, "box")
@@ -27,9 +27,9 @@ def compile_code(box_id: int, lang: str, code: str, box_dir: str) -> tuple[bool,
         
         # Compile inside isolate
         cmd = [
-            "isolate", "--cg", "-b", str(box_id),
-            "-d", "/usr", "-d", "/lib", "-d", "/lib64", "-d", "/etc", "-d", "/tmp",
-            "--env=PATH=/usr/bin:/bin",
+            "isolate", "-b", str(box_id),
+            "-d", "/usr", "-d", "/lib", "-d", "/etc", "-d", "/tmp",
+            "--env=PATH=/usr/local/bin:/usr/bin:/bin",
             "--time=10.0", "--wall-time=20.0", "--mem=512000",
             "--run", "--", "/usr/bin/g++", "-O2", "-std=c++17", "main.cpp", "-o", "main"
         ]
@@ -77,16 +77,16 @@ def run_test_case(
     mem_limit_kb = memory_limit_mb * 1024
     
     cmd = [
-        "isolate", "--cg", "-b", str(box_id),
-        "-d", "/usr", "-d", "/lib", "-d", "/lib64", "-d", "/etc", "-d", "/tmp",
-        "--env=PATH=/usr/bin:/bin",
+        "isolate", "-b", str(box_id),
+        "-d", "/usr", "-d", "/lib", "-d", "/etc", "-d", "/tmp",
+        "--env=PATH=/usr/local/bin:/usr/bin:/bin",
         f"--time={time_limit_s}", f"--wall-time={wall_time}", f"--mem={mem_limit_kb}",
         f"--meta={meta_path}",
         "--stdin=input.txt", f"--stdout={out_path}", f"--stderr={err_path}"
     ]
     
     if lang == "python3":
-        cmd.extend(["--run", "--", "/usr/bin/python3", "main.py"])
+        cmd.extend(["--run", "--", "/usr/local/bin/python3", "main.py"])
     elif lang == "cpp17":
         cmd.extend(["--run", "--", "./main"])
         
