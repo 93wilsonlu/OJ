@@ -1,4 +1,5 @@
 import type { Submission, SubmissionDetail, SubmissionListItem } from '../types/submission'
+import { throwOnApiError } from './errors'
 
 const BASE = '/api/v1'
 
@@ -14,12 +15,7 @@ export async function apiCreateSubmission(
     },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    const error = new Error((err as { detail?: string }).detail ?? 'Submission failed') as Error & { status: number }
-    error.status = res.status
-    throw error
-  }
+  await throwOnApiError(res, 'Submission failed')
   return res.json()
 }
 
@@ -27,7 +23,7 @@ export async function apiGetSubmission(token: string, submissionId: string): Pro
   const res = await fetch(`${BASE}/submissions/${submissionId}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!res.ok) throw new Error('Failed to fetch submission')
+  await throwOnApiError(res, 'Failed to fetch submission')
   return res.json()
 }
 
@@ -41,6 +37,6 @@ export async function apiListSubmissions(
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!res.ok) throw new Error('Failed to fetch submissions')
+  await throwOnApiError(res, 'Failed to fetch submissions')
   return res.json()
 }

@@ -1,9 +1,10 @@
+import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { vi, beforeEach } from 'vitest'
 import Login from '../src/pages/Login'
-import { AuthProvider } from '../src/contexts/AuthContext'
+import { AuthProvider, useAuthContext } from '../src/contexts/AuthContext'
 import * as authApi from '../src/api/auth'
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -17,6 +18,59 @@ function renderLogin(initialPath = '/login') {
           <Route path="/" element={<div>Home</div>} />
           <Route path="/dashboard" element={<div>Dashboard</div>} />
         </Routes>
+      </AuthProvider>
+    </MemoryRouter>,
+  )
+}
+
+function makeAccessToken(expSeconds: number) {
+  const payload = btoa(JSON.stringify({ exp: expSeconds }))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
+  return `header.${payload}.signature`
+}
+
+function TokenProbe() {
+  const { accessToken, user, setAuth, getAccessToken } = useAuthContext()
+  const [result, setResult] = React.useState<string | null>(null)
+  const baseUser = { user_id: '1', name: 'Alice', email: 'alice@example.com', role: 'candidate' as const }
+
+  return (
+    <div>
+      <div>state-token:{accessToken ?? 'none'}</div>
+      <div>state-user:{user?.email ?? 'none'}</div>
+      <div>result-token:{result ?? 'unset'}</div>
+      <button
+        onClick={() => setAuth(
+          baseUser,
+          makeAccessToken(Math.floor(Date.now() / 1000) + 300),
+          'refresh-token',
+        )}
+      >
+        Seed fresh
+      </button>
+      <button
+        onClick={() => setAuth(
+          baseUser,
+          makeAccessToken(Math.floor(Date.now() / 1000) - 30),
+          'refresh-token',
+        )}
+      >
+        Seed expired
+      </button>
+      <button onClick={async () => setResult(await getAccessToken())}>
+        Get token
+      </button>
+    </div>
+  )
+}
+
+function renderTokenProbe() {
+  return render(
+    <MemoryRouter>
+      <AuthProvider>
+        <TokenProbe />
       </AuthProvider>
     </MemoryRouter>,
   )
@@ -110,5 +164,55 @@ describe('Login page', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /signing in/i })).toBeDisabled(),
     )
+  })
+})
+
+describe('AuthProvider token refresh', () => {
+  test('returns fresh access token without refreshing', async () => {
+    const refreshSpy = vi.spyOn(authApi, 'apiRefresh')
+    const user = userEvent.setup()
+    renderTokenProbe()
+
+    await user.click(screen.getByRole('button', { name: /seed fresh/i }))
+    await user.click(screen.getByRole('button', { name: /get token/i }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/^result-token:header\./)).toBeInTheDocument(),
+    )
+    expect(refreshSpy).not.toHaveBeenCalled()
+  })
+
+  test('refreshes expired access token before returning it', async () => {
+    const refreshed = makeAccessToken(Math.floor(Date.now() / 1000) + 300)
+    const refreshSpy = vi.spyOn(authApi, 'apiRefresh').mockResolvedValueOnce({
+      access_token: refreshed,
+    })
+    const user = userEvent.setup()
+    renderTokenProbe()
+
+    await user.click(screen.getByRole('button', { name: /seed expired/i }))
+    await user.click(screen.getByRole('button', { name: /get token/i }))
+
+    await waitFor(() =>
+      expect(screen.getByText(`result-token:${refreshed}`)).toBeInTheDocument(),
+    )
+    expect(refreshSpy).toHaveBeenCalledWith('refresh-token')
+  })
+
+  test('clears session when refresh fails', async () => {
+    vi.spyOn(authApi, 'apiRefresh').mockRejectedValueOnce(new Error('Session expired'))
+    const user = userEvent.setup()
+    renderTokenProbe()
+
+    await user.click(screen.getByRole('button', { name: /seed expired/i }))
+    await user.click(screen.getByRole('button', { name: /get token/i }))
+
+    await waitFor(() =>
+      expect(screen.getByText('result-token:unset')).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByText('state-token:none')).toBeInTheDocument(),
+    )
+    expect(localStorage.getItem('refresh_token')).toBeNull()
   })
 })

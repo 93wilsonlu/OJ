@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { getErrorMessage } from '../api/errors'
 import { apiGetExam, apiListExamProblems } from '../api/exams'
 import { useAuth } from '../hooks/useAuth'
 import type { Exam, ExamProblem } from '../types/exam'
@@ -20,21 +21,35 @@ export default function ExamView() {
 
   useEffect(() => {
     if (!examId) return
-    getAccessToken().then(async (token) => {
-      if (!token) return
+    const currentExamId = examId
+
+    let cancelled = false
+
+    async function loadExam() {
+      setLoading(true)
+      setError(null)
       try {
+        const token = await getAccessToken()
+        if (!token) throw new Error('Session expired. Please sign in again.')
         const [examData, problemList] = await Promise.all([
-          apiGetExam(token, examId),
-          apiListExamProblems(token, examId),
+          apiGetExam(token, currentExamId),
+          apiListExamProblems(token, currentExamId),
         ])
-        setExam(examData)
-        setProblems(problemList)
+        if (!cancelled) {
+          setExam(examData)
+          setProblems(problemList)
+        }
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load')
+        if (!cancelled) setError(getErrorMessage(e, 'Failed to load exam'))
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
-    })
+    }
+
+    loadExam()
+    return () => {
+      cancelled = true
+    }
   }, [examId, getAccessToken])
 
   if (loading) return <div className="p-8 text-oj-fg-muted text-sm font-mono">Loading…</div>

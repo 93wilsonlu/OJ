@@ -5,8 +5,8 @@ import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
 
 export default function SubmissionStatus() {
   const { submissionId } = useParams<{ submissionId: string }>()
-  const { accessToken } = useAuth()
-  const { data, error } = useSubmissionPoller(submissionId ?? null, accessToken)
+  const { getAccessToken } = useAuth()
+  const { data, error } = useSubmissionPoller(submissionId ?? null, getAccessToken)
 
   if (error) {
     return <div className="p-8 text-red-400 text-sm font-mono">Error: {error}</div>

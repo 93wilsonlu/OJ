@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { getErrorMessage } from '../api/errors'
 import { apiListSubmissions } from '../api/submissions'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
@@ -13,13 +14,27 @@ export default function SubmissionsPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getAccessToken().then((token) => {
-      if (!token) return
-      apiListSubmissions(token)
-        .then(setSubmissions)
-        .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load submissions'))
-        .finally(() => setLoading(false))
-    })
+    let cancelled = false
+
+    async function loadSubmissions() {
+      setLoading(true)
+      setError(null)
+      try {
+        const token = await getAccessToken()
+        if (!token) throw new Error('Session expired. Please sign in again.')
+        const data = await apiListSubmissions(token)
+        if (!cancelled) setSubmissions(data)
+      } catch (e) {
+        if (!cancelled) setError(getErrorMessage(e, 'Failed to load submissions'))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadSubmissions()
+    return () => {
+      cancelled = true
+    }
   }, [getAccessToken])
 
   if (loading) {

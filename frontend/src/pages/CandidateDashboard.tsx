@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { getErrorMessage } from '../api/errors'
 import { apiListExams } from '../api/exams'
 import { useAuth } from '../hooks/useAuth'
 import type { Exam } from '../types/exam'
@@ -22,13 +23,27 @@ export default function CandidateDashboard() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getAccessToken().then((token) => {
-      if (!token) return
-      apiListExams(token)
-        .then(setExams)
-        .catch((e) => setError(e.message))
-        .finally(() => setLoading(false))
-    })
+    let cancelled = false
+
+    async function loadExams() {
+      setLoading(true)
+      setError(null)
+      try {
+        const token = await getAccessToken()
+        if (!token) throw new Error('Session expired. Please sign in again.')
+        const data = await apiListExams(token)
+        if (!cancelled) setExams(data)
+      } catch (e) {
+        if (!cancelled) setError(getErrorMessage(e, 'Failed to load exams'))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadExams()
+    return () => {
+      cancelled = true
+    }
   }, [getAccessToken])
 
   if (loading) {

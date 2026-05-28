@@ -6,10 +6,13 @@ import type {
   AdminUserRole,
   AdminUserUpdate,
 } from '../types/admin'
-
-import { throwOnError } from './http'
+import { throwOnApiError } from './errors'
 
 const BASE = '/api/v1'
+
+async function throwOnError(res: Response) {
+  await throwOnApiError(res, `HTTP ${res.status}`)
+}
 
 export async function apiListAdminUsers(
   token: string,

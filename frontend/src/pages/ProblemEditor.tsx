@@ -1,6 +1,7 @@
 import Editor from '@monaco-editor/react'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { getErrorMessage } from '../api/errors'
 import { apiGetProblem } from '../api/problems'
 import { apiCreateSubmission } from '../api/submissions'
 import { useAuth } from '../hooks/useAuth'
@@ -132,23 +133,43 @@ function ProblemPanel({ problem }: { problem: Problem }) {
 
 export default function ProblemEditor() {
   const { examId, problemId } = useParams<{ examId: string; problemId: string }>()
-  const { accessToken, getAccessToken } = useAuth()
+  const { getAccessToken } = useAuth()
 
   const [problem, setProblem] = useState<Problem | null>(null)
+  const [problemError, setProblemError] = useState<string | null>(null)
   const [language, setLanguage] = useState('python3')
   const [code, setCode] = useState(DEFAULT_CODE['python3'])
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submissionId, setSubmissionId] = useState<string | null>(null)
 
-  const { data: submissionData } = useSubmissionPoller(submissionId, accessToken)
+  const { data: submissionData, error: pollError } = useSubmissionPoller(
+    submissionId,
+    getAccessToken,
+  )
 
   useEffect(() => {
     if (!problemId) return
-    getAccessToken().then((token) => {
-      if (!token) return
-      apiGetProblem(token, problemId).then(setProblem).catch(() => {})
-    })
+    const currentProblemId = problemId
+
+    let cancelled = false
+
+    async function loadProblem() {
+      setProblemError(null)
+      try {
+        const token = await getAccessToken()
+        if (!token) throw new Error('Session expired. Please sign in again.')
+        const data = await apiGetProblem(token, currentProblemId)
+        if (!cancelled) setProblem(data)
+      } catch (e) {
+        if (!cancelled) setProblemError(getErrorMessage(e, 'Failed to load problem'))
+      }
+    }
+
+    loadProblem()
+    return () => {
+      cancelled = true
+    }
   }, [problemId, getAccessToken])
 
   function handleLanguageChange(lang: string) {
@@ -173,7 +194,7 @@ export default function ProblemEditor() {
       })
       setSubmissionId(submission.submission_id)
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : 'Submission failed')
+      setSubmitError(getErrorMessage(e, 'Submission failed'))
     } finally {
       setSubmitting(false)
     }
@@ -207,7 +228,15 @@ export default function ProblemEditor() {
 
       {/* Split: description | editor */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {problem && <ProblemPanel problem={problem} />}
+        {problem ? (
+          <ProblemPanel problem={problem} />
+        ) : (
+          <div className="w-2/5 border-r border-oj-border overflow-y-auto p-5 shrink-0">
+            <p className="text-sm text-oj-fg-muted font-mono">
+              {problemError ? `Error: ${problemError}` : 'Loading problem...'}
+            </p>
+          </div>
+        )}
 
         <div className="flex flex-col flex-1 min-w-0">
           {/* Editor */}
@@ -233,6 +262,12 @@ export default function ProblemEditor() {
               <div className="mt-4 p-3 rounded-lg bg-red-900/20 border border-red-700/50
                               text-sm font-mono text-red-400">
                 {submitError}
+              </div>
+            )}
+            {pollError && (
+              <div className="mt-4 p-3 rounded-lg bg-red-900/20 border border-red-700/50
+                              text-sm font-mono text-red-400">
+                {pollError}
               </div>
             )}
             <VerdictPanel
