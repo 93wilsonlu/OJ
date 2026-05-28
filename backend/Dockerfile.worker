@@ -3,7 +3,10 @@ FROM python:3.12-slim
 # Install isolate build deps
 RUN apt-get update && apt-get install -y \
     git make gcc g++ pkg-config libcap-dev libseccomp-dev libsystemd-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -s /bin/bash isolate \
+    && echo "isolate:100000:65536" >> /etc/subuid \
+    && echo "isolate:100000:65536" >> /etc/subgid
 
 # Build and install isolate
 RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
