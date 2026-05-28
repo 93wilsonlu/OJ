@@ -204,7 +204,6 @@ function UserRow({
 
 export default function UserManagement() {
   const { user: currentUser, getAccessToken } = useAuth()
-  const [token, setToken] = useState<string | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -224,7 +223,6 @@ export default function UserManagement() {
     async function loadUsers() {
       const freshToken = await getAccessToken()
       if (!freshToken || cancelled) return
-      setToken(freshToken)
       setLoading(true)
       try {
         const data = await apiListAdminUsers(freshToken, {
@@ -253,7 +251,6 @@ export default function UserManagement() {
   async function reload(targetPage = page) {
     const freshToken = await getAccessToken()
     if (!freshToken) return
-    setToken(freshToken)
     const data = await apiListAdminUsers(freshToken, {
       page: targetPage,
       pageSize: PAGE_SIZE,
@@ -268,7 +265,6 @@ export default function UserManagement() {
   async function handleCreate(payload: AdminUserCreate) {
     const freshToken = await getAccessToken()
     if (!freshToken) return
-    setToken(freshToken)
     setCreating(true)
     setCreateError(null)
     try {
@@ -286,7 +282,6 @@ export default function UserManagement() {
   async function handleSave(userId: string, payload: { name: string; role: AdminUserRole }) {
     const freshToken = await getAccessToken()
     if (!freshToken) return
-    setToken(freshToken)
     setSavingId(userId)
     setError(null)
     try {
@@ -302,7 +297,6 @@ export default function UserManagement() {
   async function handleDeactivate(target: AdminUser) {
     const freshToken = await getAccessToken()
     if (!freshToken) return
-    setToken(freshToken)
     if (!confirm(`Deactivate ${target.name}? They will no longer be able to sign in.`)) return
     setSavingId(target.user_id)
     setError(null)

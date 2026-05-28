@@ -55,7 +55,6 @@ export default function ExamManagePage() {
   const navigate = useNavigate()
   const { getAccessToken } = useAuth()
 
-  const [token, setToken] = useState<string | null>(null)
   const [exam, setExam] = useState<Exam | null>(null)
   const [form, setForm] = useState<FormData>(EMPTY_FORM)
   const [loading, setLoading] = useState(!isNew)
@@ -79,7 +78,6 @@ export default function ExamManagePage() {
     async function load() {
       const freshToken = await getAccessToken()
       if (!freshToken || cancelled) return
-      setToken(freshToken)
 
       try {
         const [problems, users] = await Promise.all([
@@ -129,7 +127,6 @@ export default function ExamManagePage() {
   async function handleSave() {
     const freshToken = await getAccessToken()
     if (!freshToken) return
-    setToken(freshToken)
 
     if (!form.title || !form.start_time || !form.end_time) {
       setError('Title, start time, and end time are required.')
@@ -195,7 +192,6 @@ export default function ExamManagePage() {
   async function handleDelete() {
     const freshToken = await getAccessToken()
     if (!freshToken || !examId) return
-    setToken(freshToken)
     if (!confirm('Delete this exam? This cannot be undone.')) return
 
     try {
