@@ -5,7 +5,7 @@ import random
 import traceback
 from sqlalchemy import select
 
-from app.database import async_session_maker
+from app.database import AsyncSessionLocal
 from app.models.submission import Submission
 from app.models.judge_result import JudgeResult
 from app.models.problem import Problem
@@ -19,7 +19,7 @@ def judge_submission(submission_id_str: str) -> None:
     asyncio.run(_judge_submission_async(uuid.UUID(submission_id_str)))
 
 async def _judge_submission_async(submission_id: uuid.UUID) -> None:
-    async with async_session_maker() as db:
+    async with AsyncSessionLocal() as db:
         submission = await db.get(Submission, submission_id)
         if not submission or submission.status != "pending":
             return
