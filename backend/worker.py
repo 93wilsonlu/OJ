@@ -123,4 +123,4 @@ async def _run_judge(lang: str, code: str, problem: Problem, test_cases: list[Te
         
     finally:
         if box_dir:
-            cleanup_box(box_id)
+            cleanup_box(box_dir)

@@ -1,54 +1,72 @@
 import os
-import random
-import subprocess
-import shutil
+import tarfile
+import io
+import time
+import docker
 
 class SandboxError(Exception):
     pass
 
-def init_box(box_id: int) -> str:
-    res = subprocess.run(["isolate", "--init", "-b", str(box_id)], capture_output=True, text=True)
-    if res.returncode != 0:
-        raise SandboxError(f"Failed to init isolate: {res.stderr}")
-    return res.stdout.strip()
+def init_box(box_id: int) -> dict:
+    client = docker.from_env()
+    return {"client": client, "box_id": str(box_id)}
 
-def cleanup_box(box_id: int):
-    subprocess.run(["isolate", "--cleanup", "-b", str(box_id)], capture_output=True)
+def cleanup_box(box_dir: dict):
+    if box_dir and "container" in box_dir:
+        try:
+            box_dir["container"].remove(force=True)
+        except Exception:
+            pass
 
-def compile_code(box_id: int, lang: str, code: str, box_dir: str) -> tuple[bool, str]:
-    box_root = os.path.join(box_dir, "box")
-    if lang == "python3":
-        with open(os.path.join(box_root, "main.py"), "w") as f:
-            f.write(code)
-        return True, ""
-    elif lang == "cpp17":
-        with open(os.path.join(box_root, "main.cpp"), "w") as f:
-            f.write(code)
+def _create_tar(files: dict) -> bytes:
+    file_io = io.BytesIO()
+    with tarfile.open(fileobj=file_io, mode="w") as tar:
+        for name, content in files.items():
+            content_bytes = content.encode("utf-8")
+            tarinfo = tarfile.TarInfo(name=name)
+            tarinfo.size = len(content_bytes)
+            tarinfo.mtime = int(time.time())
+            tar.addfile(tarinfo, io.BytesIO(content_bytes))
+    return file_io.getvalue()
+
+def compile_code(box_id: int, lang: str, code: str, box_dir: dict) -> tuple[bool, str]:
+    client = box_dir["client"]
+    image = "python:3.12-slim" if lang == "python3" else "gcc:latest"
+    
+    try:
+        # Pull image if not exists (in a real system, you'd pre-pull these)
+        try:
+            client.images.get(image)
+        except docker.errors.ImageNotFound:
+            client.images.pull(image)
+            
+        container = client.containers.run(
+            image,
+            command=["sleep", "3600"],
+            detach=True,
+            network_mode="none",
+            mem_limit="512m",
+            working_dir="/box"
+        )
+        box_dir["container"] = container
         
-        # Compile inside isolate
-        cmd = [
-            "isolate", "-b", str(box_id),
-            "-d", "/usr", "-d", "/lib", "-d", "/etc", "-d", "/tmp",
-            "--env=PATH=/usr/local/bin:/usr/bin:/bin",
-            "--time=10.0", "--wall-time=20.0", "--mem=512000",
-            "--run", "--", "/usr/bin/g++", "-O2", "-std=c++17", "main.cpp", "-o", "main"
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            return False, res.stderr
+        container.exec_run("mkdir -p /box")
+        
+        filename = "main.py" if lang == "python3" else "main.cpp"
+        tar_data = _create_tar({filename: code})
+        container.put_archive("/box", tar_data)
+        
+        if lang == "cpp17":
+            exit_code, output = container.exec_run(
+                ["g++", "-O2", "-std=c++17", "main.cpp", "-o", "main"],
+                workdir="/box"
+            )
+            if exit_code != 0:
+                return False, output.decode("utf-8", errors="ignore")
+                
         return True, ""
-    else:
-        return False, "Unsupported language"
-
-def parse_meta(meta_path: str) -> dict:
-    meta = {}
-    if os.path.exists(meta_path):
-        with open(meta_path, "r") as f:
-            for line in f:
-                if ":" in line:
-                    k, v = line.strip().split(":", 1)
-                    meta[k] = v
-    return meta
+    except Exception as e:
+        return False, str(e)
 
 def run_test_case(
     box_id: int, 
@@ -57,81 +75,48 @@ def run_test_case(
     memory_limit_mb: int, 
     input_data: str, 
     expected_output: str,
-    box_dir: str
+    box_dir: dict
 ) -> tuple[str, int, int]:
-    """
-    Returns (verdict, time_used_ms, memory_used_kb)
-    """
-    box_root = os.path.join(box_dir, "box")
-    
-    # Write input file
-    with open(os.path.join(box_root, "input.txt"), "w") as f:
-        f.write(input_data)
+    container = box_dir.get("container")
+    if not container:
+        return "System Error", 0, 0
         
-    meta_path = f"/tmp/meta_{box_id}.txt"
-    out_path = "output.txt"
-    err_path = "err.txt"
+    tar_data = _create_tar({"input.txt": input_data})
+    container.put_archive("/box", tar_data)
     
     time_limit_s = time_limit_ms / 1000.0
-    wall_time = time_limit_s + 1.0
-    mem_limit_kb = memory_limit_mb * 1024
-    
-    cmd = [
-        "isolate", "-b", str(box_id),
-        "-d", "/usr", "-d", "/lib", "-d", "/etc", "-d", "/tmp",
-        "--env=PATH=/usr/local/bin:/usr/bin:/bin",
-        f"--time={time_limit_s}", f"--wall-time={wall_time}", f"--mem={mem_limit_kb}",
-        f"--meta={meta_path}",
-        "--stdin=input.txt", f"--stdout={out_path}", f"--stderr={err_path}"
-    ]
     
     if lang == "python3":
-        cmd.extend(["--run", "--", "/usr/local/bin/python3", "main.py"])
-    elif lang == "cpp17":
-        cmd.extend(["--run", "--", "./main"])
-        
-    res = subprocess.run(cmd, capture_output=True, text=True)
+        cmd = f"timeout {time_limit_s}s python3 main.py < input.txt > output.txt"
+    else:
+        cmd = f"timeout {time_limit_s}s ./main < input.txt > output.txt"
     
-    meta = parse_meta(meta_path)
-    time_used = int(float(meta.get("time", "0")) * 1000)
-    mem_used = int(meta.get("cg-mem", meta.get("max-rss", "0")))
+    start_time = time.time()
+    exit_code, output = container.exec_run(
+        ["sh", "-c", cmd],
+        workdir="/box"
+    )
+    time_used_ms = int((time.time() - start_time) * 1000)
+    mem_used_kb = 0  # Docker exec_run doesn't expose peak mem usage easily
     
-    verdict = "Accepted"
-    
-    status = meta.get("status")
-    if status == "TO":
-        verdict = "Time Limit Exceeded"
-    elif status == "SG":
-        message = meta.get("message", "")
-        if "11" in message: # SIGSEGV
-            verdict = "Runtime Error"
-        else:
-            verdict = "Runtime Error"
-    elif status == "RE":
-        verdict = "Runtime Error"
-    elif status == "XX":
-        verdict = "System Error"
-    elif status == "ME":
-        verdict = "Memory Limit Exceeded"
-    elif res.returncode != 0 and not status:
-        verdict = "Runtime Error"
+    if exit_code == 124:
+        return "Time Limit Exceeded", time_limit_ms, mem_used_kb
+    elif exit_code == 137 or exit_code == 9:
+        return "Memory Limit Exceeded", time_used_ms, memory_limit_mb * 1024
+    elif exit_code != 0:
+        return "Runtime Error", time_used_ms, mem_used_kb
         
-    if verdict == "Accepted":
-        # Compare output
-        actual_output_path = os.path.join(box_root, out_path)
-        if os.path.exists(actual_output_path):
-            with open(actual_output_path, "r") as f:
-                actual_out = f.read().strip()
-        else:
-            actual_out = ""
-            
-        expected_out = expected_output.strip()
+    try:
+        bits, stat = container.get_archive("/box/output.txt")
+        tar_stream = io.BytesIO(b"".join(bits))
+        with tarfile.open(fileobj=tar_stream) as tar:
+            member = tar.next()
+            f = tar.extractfile(member)
+            actual_out = f.read().decode("utf-8", errors="ignore")
+    except Exception:
+        actual_out = ""
         
-        # Simple whitespace insensitive comparison
-        if actual_out.split() != expected_out.split():
-            verdict = "Wrong Answer"
-            
-    if os.path.exists(meta_path):
-        os.remove(meta_path)
+    if actual_out.strip().split() != expected_output.strip().split():
+        return "Wrong Answer", time_used_ms, mem_used_kb
         
-    return verdict, time_used, mem_used
+    return "Accepted", time_used_ms, mem_used_kb

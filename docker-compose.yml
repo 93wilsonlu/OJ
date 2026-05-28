@@ -78,6 +78,8 @@ services:
     privileged: true
     security_opt:
       - seccomp:unconfined
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   nginx:
     build:
