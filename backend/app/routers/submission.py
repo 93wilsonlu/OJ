@@ -97,4 +97,5 @@ async def get_submission(
     return SubmissionDetailOut(
         **SubmissionOut.model_validate(submission).model_dump(),
         judge_result=jr_out,
+        source_code=submission_service.get_submission_source_code(submission),
     )

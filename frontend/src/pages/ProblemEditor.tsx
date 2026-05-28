@@ -1,6 +1,6 @@
 import Editor from '@monaco-editor/react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/errors'
 import { apiGetProblem } from '../api/problems'
 import { apiCreateSubmission } from '../api/submissions'
@@ -44,6 +44,22 @@ function loadDraft(examId: string | undefined, problemId: string | undefined, la
   const key = draftKey(examId, problemId, lang)
   if (!key) return starterCode(lang)
   return localStorage.getItem(key) ?? starterCode(lang)
+}
+
+function loadReusableSubmission(submissionId: string | null) {
+  if (!submissionId) return null
+  const raw = sessionStorage.getItem(`submission-reuse:${submissionId}`)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as {
+      exam_id: string
+      problem_id: string
+      language: string
+      code: string
+    }
+  } catch {
+    return null
+  }
 }
 
 function ProblemStatement({ problem }: { problem: Problem }) {
@@ -180,6 +196,7 @@ function ResultMetric({ label, value }: { label: string; value: string }) {
 
 export default function ProblemEditor() {
   const { examId, problemId } = useParams<{ examId: string; problemId: string }>()
+  const [searchParams] = useSearchParams()
   const { getAccessToken } = useAuth()
 
   const [problem, setProblem] = useState<Problem | null>(null)
@@ -189,6 +206,7 @@ export default function ProblemEditor() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submissionId, setSubmissionId] = useState<string | null>(null)
+  const [appliedReuseId, setAppliedReuseId] = useState<string | null>(null)
 
   const { data: submissionData, error: pollError } = useSubmissionPoller(
     submissionId,
@@ -222,6 +240,17 @@ export default function ProblemEditor() {
       cancelled = true
     }
   }, [problemId, getAccessToken])
+
+  useEffect(() => {
+    const reuseId = searchParams.get('fromSubmission')
+    if (!reuseId || appliedReuseId === reuseId) return
+    const reuse = loadReusableSubmission(reuseId)
+    if (!reuse || reuse.exam_id !== examId || reuse.problem_id !== problemId) return
+
+    setLanguage(reuse.language)
+    setCode(reuse.code)
+    setAppliedReuseId(reuseId)
+  }, [appliedReuseId, examId, problemId, searchParams])
 
   useEffect(() => {
     if (!problem) return

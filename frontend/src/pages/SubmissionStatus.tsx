@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
@@ -30,25 +30,41 @@ export default function SubmissionStatus() {
     return <div className="p-8 text-oj-fg-muted text-sm font-mono animate-pulse">Loading...</div>
   }
 
-  const jr = data.judge_result
-  const displayVerdict = jr?.verdict ?? data.status
-  const isRunning = (data.status === 'pending' || data.status === 'judging') && !jr
+  const submission = data
+  const jr = submission.judge_result
+  const displayVerdict = jr?.verdict ?? submission.status
+  const isRunning = (submission.status === 'pending' || submission.status === 'judging') && !jr
+  const canReuseCode = Boolean(submission.source_code)
+  const editorUrl = `/exams/${submission.exam_id}/problems/${submission.problem_id}?fromSubmission=${submission.submission_id}`
+
+  function saveCodeForEditor() {
+    if (!submission.source_code) return
+    sessionStorage.setItem(
+      `submission-reuse:${submission.submission_id}`,
+      JSON.stringify({
+        exam_id: submission.exam_id,
+        problem_id: submission.problem_id,
+        language: submission.language,
+        code: submission.source_code,
+      }),
+    )
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-oj-fg">Submission</h1>
-          <p className="mt-1 text-sm text-oj-fg-muted font-mono">{data.submission_id}</p>
+          <p className="mt-1 text-sm text-oj-fg-muted font-mono">{submission.submission_id}</p>
         </div>
         <VerdictBadge verdict={displayVerdict} showFull />
       </div>
 
       <section className="rounded-lg border border-oj-border bg-oj-surface">
         <dl className="divide-y divide-oj-border text-sm">
-          <InfoRow label="Language" value={data.language} />
-          <InfoRow label="Submitted" value={formatDate(data.submitted_at)} />
-          <InfoRow label="Status" value={data.status} />
+          <InfoRow label="Language" value={submission.language} />
+          <InfoRow label="Submitted" value={formatDate(submission.submitted_at)} />
+          <InfoRow label="Status" value={submission.status} />
           <InfoRow label="Score" value={metricValue(jr?.score)} />
           <InfoRow
             label="Passed"
@@ -61,7 +77,7 @@ export default function SubmissionStatus() {
 
       {isRunning && (
         <p className="mt-4 text-sm text-oj-fg-muted font-mono animate-pulse">
-          {data.status === 'pending' ? 'Waiting in queue...' : 'Judging...'}
+          {submission.status === 'pending' ? 'Waiting in queue...' : 'Judging...'}
         </p>
       )}
 
@@ -73,6 +89,31 @@ export default function SubmissionStatus() {
           </pre>
         </section>
       )}
+
+      <section className="mt-5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-oj-fg">Source Code</h2>
+          {canReuseCode && (
+            <Link
+              to={editorUrl}
+              onClick={saveCodeForEditor}
+              className="rounded-md bg-oj-accent px-3 py-1.5 text-xs font-semibold text-oj-bg
+                         hover:bg-oj-accent/90"
+            >
+              Use in editor
+            </Link>
+          )}
+        </div>
+        {submission.source_code ? (
+          <pre className="max-h-[420px] overflow-auto rounded-lg border border-oj-border bg-oj-bg p-4 text-xs text-oj-fg whitespace-pre">
+            {submission.source_code}
+          </pre>
+        ) : (
+          <div className="rounded-lg border border-oj-border bg-oj-surface p-4 text-sm text-oj-fg-muted">
+            Source code is unavailable for this submission.
+          </div>
+        )}
+      </section>
     </div>
   )
 }

@@ -31,6 +31,15 @@ def put_object(key: str, data: bytes, content_type: str = "application/octet-str
     )
 
 
+def get_object_text(key: str) -> str:
+    response = get_minio().get_object(settings.MINIO_BUCKET, key)
+    try:
+        return response.read().decode("utf-8")
+    finally:
+        response.close()
+        response.release_conn()
+
+
 def delete_object(key: str) -> None:
     get_minio().remove_object(settings.MINIO_BUCKET, key)
 

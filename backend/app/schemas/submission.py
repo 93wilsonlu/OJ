@@ -41,6 +41,7 @@ class JudgeResultOut(BaseModel):
 
 class SubmissionDetailOut(SubmissionOut):
     judge_result: JudgeResultOut | None = None
+    source_code: str | None = None
 
 
 class SubmissionListItemOut(SubmissionDetailOut):

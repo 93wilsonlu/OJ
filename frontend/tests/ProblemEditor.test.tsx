@@ -58,9 +58,9 @@ function mockAuth() {
   })
 }
 
-function renderPage() {
+function renderPage(path = '/exams/exam-1/problems/problem-1') {
   return render(
-    <MemoryRouter initialEntries={['/exams/exam-1/problems/problem-1']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/exams/:examId/problems/:problemId" element={<ProblemEditor />} />
       </Routes>
@@ -117,5 +117,24 @@ describe('ProblemEditor', () => {
         code: 'int main() { return 0; }',
       })
     })
+  })
+
+  test('loads reusable submission code into the editor', async () => {
+    sessionStorage.setItem(
+      'submission-reuse:submission-1',
+      JSON.stringify({
+        exam_id: 'exam-1',
+        problem_id: 'problem-1',
+        language: 'cpp17',
+        code: 'int reused() { return 42; }',
+      }),
+    )
+
+    renderPage('/exams/exam-1/problems/problem-1?fromSubmission=submission-1')
+
+    await screen.findByRole('heading', { name: 'Two Sum' })
+    const editor = screen.getByLabelText('Code editor')
+    await waitFor(() => expect(editor).toHaveValue('int reused() { return 42; }'))
+    expect(screen.getByRole('combobox', { name: 'Language' })).toHaveValue('cpp17')
   })
 })

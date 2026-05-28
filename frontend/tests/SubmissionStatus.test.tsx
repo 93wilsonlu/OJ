@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, vi } from 'vitest'
 import * as useAuthModule from '../src/hooks/useAuth'
@@ -19,6 +19,7 @@ const baseSubmission: SubmissionDetail = {
   status: 'judging',
   submitted_at: new Date('2026-05-28T08:00:00Z').toISOString(),
   judge_result: null,
+  source_code: "print('hello')\n",
 }
 
 function mockAuth() {
@@ -41,6 +42,7 @@ function renderPage() {
     <MemoryRouter initialEntries={['/submissions/submission-1']}>
       <Routes>
         <Route path="/submissions/:submissionId" element={<SubmissionStatus />} />
+        <Route path="/exams/:examId/problems/:problemId" element={<div>Editor</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -48,6 +50,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  sessionStorage.clear()
   mockAuth()
 })
 
@@ -90,5 +93,16 @@ describe('SubmissionStatus', () => {
     expect(screen.getByText('4 / 4')).toBeInTheDocument()
     expect(screen.getByText('13 ms')).toBeInTheDocument()
     expect(screen.getByText('2048 KB')).toBeInTheDocument()
+  })
+
+  test('shows submitted source code and stores it for reuse in the editor', () => {
+    vi.mocked(useSubmissionPoller).mockReturnValue({ data: baseSubmission, error: null })
+
+    renderPage()
+
+    expect(screen.getByText("print('hello')")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: 'Use in editor' }))
+
+    expect(sessionStorage.getItem('submission-reuse:submission-1')).toContain("print('hello')")
   })
 })
