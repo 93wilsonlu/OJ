@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getErrorMessage } from '../api/errors'
-import { apiListExams } from '../api/exams'
+import { apiListExamProblems, apiListExams } from '../api/exams'
+import { apiListSubmissions } from '../api/submissions'
+import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import type { Exam } from '../types/exam'
+import type { SubmissionListItem } from '../types/submission'
 
 type ExamStatus = 'Active' | 'Upcoming' | 'Ended'
 type StatusFilter = 'all' | ExamStatus
@@ -59,10 +62,22 @@ function examRemaining(exam: Exam, now: Date) {
   return 'Closed'
 }
 
+function latestSubmissionByExam(submissions: SubmissionListItem[]) {
+  return submissions.reduce<Record<string, SubmissionListItem>>((acc, submission) => {
+    const current = acc[submission.exam_id]
+    if (!current || new Date(submission.submitted_at) > new Date(current.submitted_at)) {
+      acc[submission.exam_id] = submission
+    }
+    return acc
+  }, {})
+}
+
 export default function CandidateDashboard() {
   const { user, getAccessToken } = useAuth()
   const isInterviewer = user?.role === 'interviewer' || user?.role === 'admin'
   const [exams, setExams] = useState<Exam[]>([])
+  const [problemCounts, setProblemCounts] = useState<Record<string, number>>({})
+  const [latestSubmissions, setLatestSubmissions] = useState<Record<string, SubmissionListItem>>({})
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [now, setNow] = useState(() => new Date())
@@ -84,7 +99,20 @@ export default function CandidateDashboard() {
         const token = await getAccessToken()
         if (!token) throw new Error('Session expired. Please sign in again.')
         const data = await apiListExams(token)
-        if (!cancelled) setExams(data)
+        const [counts, submissions] = await Promise.all([
+          Promise.all(
+            data.map(async (exam) => {
+              const problems = await apiListExamProblems(token, exam.exam_id)
+              return [exam.exam_id, problems.length] as const
+            }),
+          ),
+          apiListSubmissions(token),
+        ])
+        if (!cancelled) {
+          setExams(data)
+          setProblemCounts(Object.fromEntries(counts))
+          setLatestSubmissions(latestSubmissionByExam(submissions))
+        }
       } catch (e) {
         if (!cancelled) setError(getErrorMessage(e, 'Failed to load exams'))
       } finally {
@@ -198,15 +226,19 @@ export default function CandidateDashboard() {
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Exam</th>
                 <th className="px-4 py-3 text-left font-semibold">Status</th>
+                <th className="px-4 py-3 text-right font-semibold">Problems</th>
                 <th className="px-4 py-3 text-left font-semibold">Start Time</th>
                 <th className="px-4 py-3 text-left font-semibold">End Time</th>
                 <th className="px-4 py-3 text-left font-semibold">Remaining</th>
+                <th className="px-4 py-3 text-left font-semibold">Last Submission</th>
                 <th className="px-4 py-3 text-right font-semibold">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-oj-border">
               {visibleExams.map((exam) => {
                 const status = examStatus(exam, now)
+                const latest = latestSubmissions[exam.exam_id]
+                const latestVerdict = latest?.judge_result?.verdict ?? latest?.status
                 return (
                   <tr key={exam.exam_id} className="hover:bg-oj-muted/60 transition-colors">
                     <td className="px-4 py-3 min-w-[240px]">
@@ -230,6 +262,9 @@ export default function CandidateDashboard() {
                         {status}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-right text-oj-fg font-mono">
+                      {problemCounts[exam.exam_id] ?? '-'}
+                    </td>
                     <td className="px-4 py-3 text-oj-fg-muted font-mono whitespace-nowrap">
                       {fmtDate(exam.start_time)}
                     </td>
@@ -238,6 +273,18 @@ export default function CandidateDashboard() {
                     </td>
                     <td className="px-4 py-3 text-oj-fg font-mono whitespace-nowrap">
                       {examRemaining(exam, now)}
+                    </td>
+                    <td className="px-4 py-3 min-w-[150px]">
+                      {latest ? (
+                        <div className="flex flex-col items-start gap-1">
+                          <VerdictBadge verdict={latestVerdict} />
+                          <span className="text-xs text-oj-fg-muted font-mono">
+                            {fmtDate(latest.submitted_at)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-oj-fg-muted font-mono">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-3">
