@@ -176,6 +176,19 @@ async def delete_user(
         raise HTTPException(status_code=409, detail="Cannot delete user with existing data")
 
 
+async def deactivate_user(
+    db: AsyncSession,
+    current_user: User,
+    user_id: uuid.UUID,
+) -> User:
+    return await update_user(
+        db,
+        current_user,
+        user_id,
+        AdminUserUpdate(is_active=False),
+    )
+
+
 async def get_exam_results(
     db: AsyncSession,
     current_user: User,

@@ -127,6 +127,13 @@ async def get_submission(
     return submission, judge_result
 
 
+def get_submission_source_code(submission: Submission) -> str | None:
+    try:
+        return storage.get_object_text(submission.code_storage_key)
+    except Exception:
+        return None
+
+
 async def list_submissions(
     db: AsyncSession,
     requester_id: uuid.UUID,

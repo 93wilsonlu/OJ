@@ -16,6 +16,30 @@ interface AuthContextValue extends AuthState {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+const TOKEN_REFRESH_SKEW_SECONDS = 30
+
+function getJwtExpSeconds(token: string): number | null {
+  const payload = token.split('.')[1]
+  if (!payload) return null
+
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      '=',
+    )
+    const decoded = JSON.parse(atob(padded)) as { exp?: unknown }
+    return typeof decoded.exp === 'number' ? decoded.exp : null
+  } catch {
+    return null
+  }
+}
+
+function isAccessTokenFresh(token: string): boolean {
+  const exp = getJwtExpSeconds(token)
+  if (exp === null) return true
+  return exp > Date.now() / 1000 + TOKEN_REFRESH_SKEW_SECONDS
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ user: null, accessToken: null, loading: true })
@@ -57,7 +81,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
-    if (state.accessToken) return state.accessToken
+    if (state.accessToken && isAccessTokenFresh(state.accessToken)) {
+      return state.accessToken
+    }
+
     const stored = localStorage.getItem('refresh_token')
     if (!stored) return null
     try {

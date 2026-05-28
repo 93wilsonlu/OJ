@@ -20,6 +20,7 @@ from app.models.judge_result import JudgeResult
 from app.models.problem import Problem
 from app.models.submission import Submission
 from app.schemas.admin import AdminUserCreate, AdminUserUpdate
+from app.schemas.admin import AdminUserOut
 from app.services.admin import create_user, deactivate_user, get_exam_results, update_user
 from app.services.auth import hash_password
 
@@ -260,3 +261,12 @@ def test_non_admin_gets_403_on_user_list():
         _clear_overrides()
 
     assert response.status_code == 403
+
+
+def test_admin_user_out_accepts_legacy_reserved_domain_email():
+    user = _make_user("candidate")
+    user.email = "alice.candidate@example.test"
+
+    out = AdminUserOut.model_validate(user)
+
+    assert out.email == "alice.candidate@example.test"

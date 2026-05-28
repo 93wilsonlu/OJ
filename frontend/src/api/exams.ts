@@ -1,7 +1,11 @@
 import type { Exam, ExamAssignment, ExamCreate, ExamProblem, ExamUpdate } from '../types/exam'
-import { throwOnError } from './http'
+import { throwOnApiError } from './errors'
 
 const BASE = '/api/v1'
+
+async function throwOnError(res: Response) {
+  await throwOnApiError(res, `HTTP ${res.status}`)
+}
 
 export async function apiListExams(token: string): Promise<Exam[]> {
   const res = await fetch(`${BASE}/exams`, {

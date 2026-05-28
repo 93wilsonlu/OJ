@@ -2,15 +2,15 @@ import { render, screen } from '@testing-library/react'
 import VerdictBadge from '../src/components/VerdictBadge'
 
 const CASES = [
-  { verdict: 'Accepted',              label: 'AC',       cls: 'badge-accepted' },
-  { verdict: 'Wrong Answer',          label: 'WA',       cls: 'badge-wrong'    },
-  { verdict: 'Time Limit Exceeded',   label: 'TLE',      cls: 'badge-tle'      },
-  { verdict: 'Memory Limit Exceeded', label: 'MLE',      cls: 'badge-mle'      },
-  { verdict: 'Compile Error',         label: 'CE',       cls: 'badge-ce'       },
-  { verdict: 'Runtime Error',         label: 'RE',       cls: 'badge-re'       },
-  { verdict: 'System Error',          label: 'SE',       cls: 'badge-system'   },
-  { verdict: 'pending',               label: 'Pending',  cls: 'badge-pending'  },
-  { verdict: 'judging',               label: 'Judging…', cls: 'badge-pending'  },
+  { verdict: 'Accepted', label: 'AC', cls: 'badge-accepted' },
+  { verdict: 'Wrong Answer', label: 'WA', cls: 'badge-wrong' },
+  { verdict: 'Time Limit Exceeded', label: 'TLE', cls: 'badge-tle' },
+  { verdict: 'Memory Limit Exceeded', label: 'MLE', cls: 'badge-mle' },
+  { verdict: 'Compile Error', label: 'CE', cls: 'badge-ce' },
+  { verdict: 'Runtime Error', label: 'RE', cls: 'badge-re' },
+  { verdict: 'System Error', label: 'SE', cls: 'badge-system' },
+  { verdict: 'pending', label: 'Pending', cls: 'badge-pending' },
+  { verdict: 'judging', label: 'Judging', cls: 'badge-pending' },
 ]
 
 describe('VerdictBadge', () => {

@@ -25,7 +25,7 @@ class AdminUserUpdate(BaseModel):
 class AdminUserOut(BaseModel):
     user_id: uuid.UUID
     name: str
-    email: EmailStr
+    email: str
     role: UserRole
     is_active: bool
     created_at: datetime
@@ -53,7 +53,7 @@ class ExamProblemResultOut(BaseModel):
 class ExamCandidateResultOut(BaseModel):
     candidate_id: uuid.UUID
     name: str
-    email: EmailStr
+    email: str
     problems: list[ExamProblemResultOut]
     total_score: float
 
