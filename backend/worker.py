@@ -91,6 +91,10 @@ async def _run_judge(lang: str, code: str, problem: Problem, test_cases: list[Te
         total_score = 0.0
         final_verdict = "Accepted"
         
+        if not test_cases:
+            return "System Error", 0, 0, 0, "No test cases found for this problem.", 0, 0
+
+        
         for tc in test_cases:
             try:
                 input_data = storage.get_object_text(tc.input_data_key)
