@@ -89,6 +89,7 @@ To seed a sample test exam, problems, and test cases:
 2. Run the seed SQL file inside the database container:
 ```bash
 docker compose exec -T postgres psql -U oj -d oj < backend/seed_sample_exam.sql
+docker compose exec -T api uv run python seed_testcases.py
 ```
 This imports demo data including:
 *   Pre-configured coding questions.
