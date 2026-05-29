@@ -21,7 +21,15 @@ from app.models.problem import Problem
 from app.models.submission import Submission
 from app.schemas.admin import AdminUserCreate, AdminUserUpdate
 from app.schemas.admin import AdminUserOut
-from app.services.admin import create_user, deactivate_user, get_exam_results, update_user
+from sqlalchemy.exc import IntegrityError
+
+from app.services.admin import (
+    create_user,
+    deactivate_user,
+    delete_user,
+    get_exam_results,
+    update_user,
+)
 from app.services.auth import hash_password
 
 
@@ -206,6 +214,51 @@ async def test_admin_can_deactivate_other_user():
 
     assert candidate.is_active is False
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_admin_can_delete_other_user():
+    admin = _make_user("admin")
+    candidate = _make_user("candidate")
+    db = _mock_db()
+    db.get = AsyncMock(return_value=candidate)
+    db.delete = AsyncMock()
+
+    await delete_user(db, admin, candidate.user_id)
+
+    db.delete.assert_awaited_once_with(candidate)
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_delete_own_account():
+    admin = _make_user("admin")
+    db = _mock_db()
+    db.get = AsyncMock(return_value=admin)
+    db.delete = AsyncMock()
+
+    with pytest.raises(HTTPException) as exc:
+        await delete_user(db, admin, admin.user_id)
+
+    assert exc.value.status_code == 403
+    db.delete.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_user_with_existing_data_returns_409():
+    admin = _make_user("admin")
+    candidate = _make_user("candidate")
+    db = _mock_db()
+    db.get = AsyncMock(return_value=candidate)
+    db.delete = AsyncMock()
+    db.commit = AsyncMock(side_effect=IntegrityError("stmt", {}, Exception("fk")))
+
+    with pytest.raises(HTTPException) as exc:
+        await delete_user(db, admin, candidate.user_id)
+
+    assert exc.value.status_code == 409
+    db.rollback.assert_awaited_once()
 
 
 @pytest.mark.asyncio
