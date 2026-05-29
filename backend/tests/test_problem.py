@@ -6,6 +6,7 @@ Critical success criterion (Phase 3):
   hidden test cases must NOT appear in GET /problems/{id}/test-cases for non-admin users.
 """
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -192,14 +193,10 @@ def _clear_overrides():
 
 @patch("app.routers.problem.problem_service.list_test_cases", new_callable=AsyncMock)
 @patch("app.routers.problem.problem_service.get_problem", new_callable=AsyncMock)
-def test_hidden_testcases_absent_from_candidate_response(mock_get_problem, mock_list_tcs):
-    """CRITICAL: candidate GET /test-cases must not receive hidden test cases."""
+def test_candidate_gets_403_on_list_test_cases(mock_get_problem, mock_list_tcs):
+    """H1 IDOR: candidates can't enumerate test cases; they use /exams/{id}/problems."""
     candidate = _make_user("candidate")
     problem = _make_problem()
-    visible = _make_test_case(problem.problem_id, is_hidden=False)
-
-    mock_get_problem.return_value = problem
-    mock_list_tcs.return_value = [visible]  # service returns only visible for candidate
 
     client = _client_for(candidate)
     try:
@@ -207,14 +204,54 @@ def test_hidden_testcases_absent_from_candidate_response(mock_get_problem, mock_
     finally:
         _clear_overrides()
 
+    assert resp.status_code == 403
+    mock_list_tcs.assert_not_called()
+    mock_get_problem.assert_not_called()
+
+
+@patch("app.routers.problem.problem_service.list_problems", new_callable=AsyncMock)
+def test_candidate_gets_403_on_list_problems(mock_list):
+    """H1 IDOR: candidates can't enumerate the problem bank."""
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get("/api/v1/problems")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 403
+    mock_list.assert_not_called()
+
+
+@patch("app.routers.problem.problem_service.get_problem", new_callable=AsyncMock)
+def test_candidate_gets_403_on_get_problem(mock_get):
+    """H1 IDOR: candidates can't read arbitrary problems by UUID."""
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get(f"/api/v1/problems/{uuid.uuid4()}")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 403
+    mock_get.assert_not_called()
+
+
+@patch("app.routers.problem.problem_service.list_problems", new_callable=AsyncMock)
+def test_interviewer_can_list_problems(mock_list):
+    """H1: interviewers retain read access to assign problems to exams."""
+    problem = _make_problem()
+    problem.created_at = datetime.now(UTC)
+    mock_list.return_value = [problem]
+    interviewer = _make_user("interviewer")
+    client = _client_for(interviewer)
+    try:
+        resp = client.get("/api/v1/problems")
+    finally:
+        _clear_overrides()
+
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 1
-    assert data[0]["is_hidden"] is False
-    # Router must pass include_hidden=False for a candidate
-    mock_list_tcs.assert_called_once()
-    _, _, include_hidden = mock_list_tcs.call_args.args
-    assert include_hidden is False
+    assert len(resp.json()) == 1
 
 
 @patch("app.routers.problem.problem_service.list_test_cases", new_callable=AsyncMock)
@@ -279,6 +316,33 @@ def test_problem_admin_can_delete_test_case(mock_get_tc, mock_delete_tc):
 
     assert resp.status_code == 204
     mock_delete_tc.assert_called_once_with(ANY, tc)
+
+
+@patch("app.routers.problem.problem_service.create_test_case", new_callable=AsyncMock)
+@patch("app.routers.problem.problem_service.get_problem", new_callable=AsyncMock)
+def test_oversized_test_case_upload_rejected_413(mock_get_problem, mock_create_tc):
+    """H5: test-case files larger than the cap are rejected before buffering/storage."""
+    from app.routers.problem import MAX_TESTCASE_BYTES
+
+    admin = _make_user("problem_admin")
+    problem = _make_problem()
+    mock_get_problem.return_value = problem
+    oversized = b"x" * (MAX_TESTCASE_BYTES + 1)
+
+    client = _client_for(admin)
+    try:
+        resp = client.post(
+            f"/api/v1/problems/{problem.problem_id}/test-cases",
+            files={
+                "input_file": ("input.txt", oversized),
+                "expected_file": ("expected.txt", b"ok"),
+            },
+        )
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 413
+    mock_create_tc.assert_not_called()
 
 
 @patch("app.routers.problem.problem_service.delete_test_case", new_callable=AsyncMock)

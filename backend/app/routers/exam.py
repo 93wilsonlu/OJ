@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.exam import Exam
 from app.models.user import User
 from app.schemas.exam import (
     ExamAssignmentCreate,
@@ -20,6 +21,17 @@ from app.services.auth import require_role
 router = APIRouter(prefix="/exams", tags=["exams"])
 
 _WRITE_ROLES = ("interviewer", "admin")
+
+
+async def get_scoped_exam(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Exam:
+    """Resolve an exam with candidate-assignment scope enforced (H2 IDOR guard)."""
+    return await exam_service.get_exam_for_user(
+        db, exam_id, current_user.user_id, current_user.role
+    )
 
 
 @router.get("", response_model=list[ExamOut])
@@ -44,11 +56,8 @@ async def create_exam(
 
 @router.get("/{exam_id}", response_model=ExamOut)
 async def get_exam(
-    exam_id: uuid.UUID,
-    _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    exam: Exam = Depends(get_scoped_exam),
 ):
-    exam = await exam_service.get_exam(db, exam_id)
     return ExamOut.model_validate(exam)
 
 
@@ -79,13 +88,12 @@ async def delete_exam(
 
 @router.get("/{exam_id}/problems", response_model=list[ExamProblemOut])
 async def list_exam_problems(
-    exam_id: uuid.UUID,
+    exam: Exam = Depends(get_scoped_exam),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await exam_service.get_exam(db, exam_id)
     items = await exam_service.list_exam_problems_for_user(
-        db, exam_id, current_user.user_id, current_user.role
+        db, exam.exam_id, current_user.user_id, current_user.role
     )
     return [ExamProblemOut(**vars(item)) for item in items]
 

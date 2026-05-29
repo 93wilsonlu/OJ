@@ -23,6 +23,7 @@ from app.services.exam import (
     create_exam,
     delete_exam,
     get_exam,
+    get_exam_for_user,
     list_exams,
     update_exam,
 )
@@ -105,6 +106,56 @@ async def test_get_exam_found():
     db.get = AsyncMock(return_value=exam)
     result = await get_exam(db, exam.exam_id)
     assert result is exam
+
+
+# ── service: candidate-scoped get (H2 IDOR) ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_exam_for_user_candidate_with_assignment_returns_exam():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result_mock = MagicMock()
+    result_mock.first.return_value = (uuid.uuid4(),)  # assignment row exists
+    db.execute = AsyncMock(return_value=result_mock)
+
+    result = await get_exam_for_user(db, exam.exam_id, uuid.uuid4(), "candidate")
+    assert result is exam
+
+
+@pytest.mark.asyncio
+async def test_get_exam_for_user_candidate_without_assignment_raises_404():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result_mock = MagicMock()
+    result_mock.first.return_value = None  # no assignment
+    db.execute = AsyncMock(return_value=result_mock)
+
+    with pytest.raises(HTTPException) as exc:
+        await get_exam_for_user(db, exam.exam_id, uuid.uuid4(), "candidate")
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_exam_for_user_interviewer_skips_assignment_check():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    db.execute = AsyncMock()
+
+    result = await get_exam_for_user(db, exam.exam_id, uuid.uuid4(), "interviewer")
+    assert result is exam
+    db.execute.assert_not_awaited()  # no assignment lookup for staff
+
+
+@pytest.mark.asyncio
+async def test_get_exam_for_user_missing_exam_raises_404():
+    db = _mock_db()
+    db.get = AsyncMock(return_value=None)
+    with pytest.raises(HTTPException) as exc:
+        await get_exam_for_user(db, uuid.uuid4(), uuid.uuid4(), "candidate")
+    assert exc.value.status_code == 404
 
 
 # ── service: create / update ───────────────────────────────────────────────────
@@ -194,6 +245,36 @@ def test_candidate_gets_403_on_create_exam(mock_create):
 
     assert resp.status_code == 403
     mock_create.assert_not_called()
+
+
+@patch("app.routers.exam.exam_service.list_exam_problems_for_user", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_candidate_unassigned_gets_404_on_exam_problems(mock_scoped, mock_list_problems):
+    """H2 IDOR: unassigned candidate is 404'd by the scoped-exam dependency."""
+    mock_scoped.side_effect = HTTPException(status_code=404, detail="Exam not found")
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get(f"/api/v1/exams/{uuid.uuid4()}/problems")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 404
+    mock_list_problems.assert_not_called()
+
+
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_candidate_unassigned_gets_404_on_get_exam(mock_scoped):
+    """H2 IDOR: unassigned candidate can't read exam metadata by UUID."""
+    mock_scoped.side_effect = HTTPException(status_code=404, detail="Exam not found")
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get(f"/api/v1/exams/{uuid.uuid4()}")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 404
 
 
 @patch("app.routers.exam.exam_service.list_exams", new_callable=AsyncMock)

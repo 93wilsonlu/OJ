@@ -1,11 +1,11 @@
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, require_roles
 from app.models.user import User
 from app.schemas.problem import ProblemCreate, ProblemOut, ProblemUpdate, TestCaseOut
 from app.services import problem as problem_service
@@ -14,11 +14,24 @@ from app.services.auth import require_role
 router = APIRouter(prefix="/problems", tags=["problems"])
 
 _WRITE_ROLES = ("problem_admin", "admin")
+# Reading the problem bank is staff-only; candidates see problems via /exams/{id}/problems.
+_READ_ROLES = ("problem_admin", "admin", "interviewer")
+
+# Cap uploaded test-case files to prevent memory exhaustion (256 KB each).
+MAX_TESTCASE_BYTES = 256 * 1024
 
 
-@router.get("", response_model=list[ProblemOut])
+async def _read_capped(file: UploadFile) -> bytes:
+    data = await file.read(MAX_TESTCASE_BYTES + 1)
+    if len(data) > MAX_TESTCASE_BYTES:
+        raise HTTPException(status_code=413, detail="Test case file too large")
+    return data
+
+
+@router.get(
+    "", response_model=list[ProblemOut], dependencies=[Depends(require_roles(*_READ_ROLES))]
+)
 async def list_problems(
-    _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     problems = await problem_service.list_problems(db)
@@ -36,10 +49,13 @@ async def create_problem(
     return ProblemOut.model_validate(problem)
 
 
-@router.get("/{problem_id}", response_model=ProblemOut)
+@router.get(
+    "/{problem_id}",
+    response_model=ProblemOut,
+    dependencies=[Depends(require_roles(*_READ_ROLES))],
+)
 async def get_problem(
     problem_id: uuid.UUID,
-    _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     problem = await problem_service.get_problem(db, problem_id)
@@ -74,7 +90,7 @@ async def delete_problem(
 @router.get("/{problem_id}/test-cases", response_model=list[TestCaseOut])
 async def list_test_cases(
     problem_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(*_READ_ROLES)),
     db: AsyncSession = Depends(get_db),
 ):
     await problem_service.get_problem(db, problem_id)  # 404 if problem missing
@@ -98,8 +114,8 @@ async def create_test_case(
 ):
     require_role(current_user, *_WRITE_ROLES)
     await problem_service.get_problem(db, problem_id)  # 404 if problem missing
-    input_bytes = await input_file.read()
-    expected_bytes = await expected_file.read()
+    input_bytes = await _read_capped(input_file)
+    expected_bytes = await _read_capped(expected_file)
     tc = await problem_service.create_test_case(
         db, problem_id, input_bytes, expected_bytes, is_hidden, score_weight,
         name, time_limit_override, memory_limit_override,
@@ -123,8 +139,8 @@ async def update_test_case(
 ):
     require_role(current_user, *_WRITE_ROLES)
     tc = await problem_service.get_test_case(db, problem_id, testcase_id)
-    input_bytes = await input_file.read() if input_file else None
-    expected_bytes = await expected_file.read() if expected_file else None
+    input_bytes = await _read_capped(input_file) if input_file else None
+    expected_bytes = await _read_capped(expected_file) if expected_file else None
     tc = await problem_service.update_test_case(
         db, tc, is_hidden, score_weight, name,
         time_limit_override, memory_limit_override,

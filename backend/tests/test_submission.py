@@ -299,6 +299,30 @@ def test_interviewer_gets_403_on_post_submission(mock_create):
 
 
 @patch("app.routers.submission.submission_service.create_submission", new_callable=AsyncMock)
+def test_oversized_code_rejected_422(mock_create):
+    """H5: code beyond the cap is rejected by schema validation before the service."""
+    from app.schemas.submission import MAX_CODE_CHARS
+
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.post(
+            "/api/v1/submissions",
+            json={
+                "exam_id": str(uuid.uuid4()),
+                "problem_id": str(uuid.uuid4()),
+                "language": "python3",
+                "code": "x" * (MAX_CODE_CHARS + 1),
+            },
+        )
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 422
+    mock_create.assert_not_called()
+
+
+@patch("app.routers.submission.submission_service.create_submission", new_callable=AsyncMock)
 def test_candidate_post_submission_returns_202(mock_create):
     candidate = _make_user("candidate")
     exam_id = uuid.uuid4()

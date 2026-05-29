@@ -50,6 +50,29 @@ async def get_exam(db: AsyncSession, exam_id: uuid.UUID) -> Exam:
     return exam
 
 
+async def get_exam_for_user(
+    db: AsyncSession, exam_id: uuid.UUID, user_id: uuid.UUID, role: str
+) -> Exam:
+    """Fetch an exam, enforcing candidate assignment scope.
+
+    Candidates may only read exams they're assigned to; otherwise 404 (not 403,
+    to avoid leaking exam existence by UUID).
+    """
+    exam = await get_exam(db, exam_id)
+    if role == "candidate":
+        result = await db.execute(
+            select(ExamAssignment.assignment_id)
+            .where(
+                ExamAssignment.exam_id == exam_id,
+                ExamAssignment.candidate_id == user_id,
+            )
+            .limit(1)
+        )
+        if result.first() is None:
+            raise HTTPException(status_code=404, detail="Exam not found")
+    return exam
+
+
 async def create_exam(db: AsyncSession, data: ExamCreate, creator_id: uuid.UUID) -> Exam:
     exam = Exam(
         title=data.title,
