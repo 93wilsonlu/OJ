@@ -345,6 +345,31 @@ def test_oversized_test_case_upload_rejected_413(mock_get_problem, mock_create_t
     mock_create_tc.assert_not_called()
 
 
+@patch("app.routers.problem.problem_service.create_test_case", new_callable=AsyncMock)
+@patch("app.routers.problem.problem_service.get_problem", new_callable=AsyncMock)
+def test_non_positive_limit_override_rejected_422(mock_get_problem, mock_create_tc):
+    """Per-test limit overrides feed the sandbox shell/cgroup, so reject <= 0."""
+    admin = _make_user("problem_admin")
+    problem = _make_problem()
+    mock_get_problem.return_value = problem
+
+    client = _client_for(admin)
+    try:
+        resp = client.post(
+            f"/api/v1/problems/{problem.problem_id}/test-cases",
+            files={
+                "input_file": ("input.txt", b"1"),
+                "expected_file": ("expected.txt", b"1"),
+            },
+            data={"time_limit_override": "0", "memory_limit_override": "-5"},
+        )
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 422
+    mock_create_tc.assert_not_called()
+
+
 @patch("app.routers.problem.problem_service.delete_test_case", new_callable=AsyncMock)
 @patch("app.routers.problem.problem_service.get_test_case", new_callable=AsyncMock)
 def test_candidate_gets_403_on_delete_test_case(mock_get_tc, mock_delete_tc):
