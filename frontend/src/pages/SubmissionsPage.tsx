@@ -52,7 +52,7 @@ export default function SubmissionsPage() {
   }
 
   if (error) {
-    return <div className="p-8 text-red-400 text-sm font-mono">Error: {error}</div>
+    return <div className="p-8 text-red-700 text-sm font-mono">Error: {error}</div>
   }
 
   const isCandidate = user?.role === 'candidate'
@@ -157,7 +157,7 @@ export default function SubmissionsPage() {
               {filteredSubmissions.map((submission) => {
                 const verdict = verdictOf(submission)
                 return (
-                  <tr key={submission.submission_id}>
+                  <tr key={submission.submission_id} className="transition-colors hover:bg-red-50/40">
                     <td className="px-4 py-3">
                       <div className="font-medium text-oj-fg">{submission.problem_title}</div>
                       <div className="text-xs text-oj-fg-muted font-mono mt-0.5">
