@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.judge_result import JudgeResult
 from app.models.problem import Problem
+from app.models.submission import Submission
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
 
 
@@ -50,6 +52,42 @@ async def get_exam(db: AsyncSession, exam_id: uuid.UUID) -> Exam:
     return exam
 
 
+async def get_exam_for_user(
+    db: AsyncSession, exam_id: uuid.UUID, user_id: uuid.UUID, role: str
+) -> Exam:
+    """Fetch an exam, enforcing candidate assignment scope.
+
+    Candidates may only read exams they're assigned to; otherwise 404 (not 403,
+    to avoid leaking exam existence by UUID).
+    """
+    exam = await get_exam(db, exam_id)
+    if role == "candidate":
+        result = await db.execute(
+            select(ExamAssignment.assignment_id)
+            .where(
+                ExamAssignment.exam_id == exam_id,
+                ExamAssignment.candidate_id == user_id,
+            )
+            .limit(1)
+        )
+        if result.first() is None:
+            raise HTTPException(status_code=404, detail="Exam not found")
+    return exam
+
+
+async def get_owned_exam(
+    db: AsyncSession, exam_id: uuid.UUID, user_id: uuid.UUID, role: str
+) -> Exam:
+    """Fetch an exam, enforcing owner-or-admin write scope (I5).
+
+    Interviewers may modify only exams they created; admins may modify any.
+    """
+    exam = await get_exam(db, exam_id)
+    if role != "admin" and exam.created_by != user_id:
+        raise HTTPException(status_code=403, detail="Not the owner of this exam")
+    return exam
+
+
 async def create_exam(db: AsyncSession, data: ExamCreate, creator_id: uuid.UUID) -> Exam:
     exam = Exam(
         title=data.title,
@@ -74,6 +112,27 @@ async def update_exam(db: AsyncSession, exam: Exam, data: ExamUpdate) -> Exam:
 
 
 async def delete_exam(db: AsyncSession, exam: Exam) -> None:
+    eid = exam.exam_id
+
+    # Dependent rows have no DB-level cascade — clean up in FK order.
+    result = await db.execute(select(Submission).where(Submission.exam_id == eid))
+    submissions = list(result.scalars())
+    if submissions:
+        sub_ids = [s.submission_id for s in submissions]
+        result = await db.execute(
+            select(JudgeResult).where(JudgeResult.submission_id.in_(sub_ids))
+        )
+        for jr in result.scalars():
+            await db.delete(jr)
+        for sub in submissions:
+            await db.delete(sub)
+
+    result = await db.execute(
+        select(ExamAssignment).where(ExamAssignment.exam_id == eid)
+    )
+    for assignment in result.scalars():
+        await db.delete(assignment)
+
     await db.delete(exam)
     await db.commit()
 

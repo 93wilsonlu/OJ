@@ -29,3 +29,13 @@ async def get_current_user(
     if user is None or user.is_active is False:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+def require_roles(*allowed: str):
+    """Dependency factory guarding a route by role. Returns the current user."""
+    async def _guard(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in allowed:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return current_user
+
+    return _guard

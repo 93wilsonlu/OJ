@@ -2,14 +2,17 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# Cap submitted source to prevent memory exhaustion / oversized payloads (256 KB).
+MAX_CODE_CHARS = 256 * 1024
 
 
 class SubmissionCreate(BaseModel):
     exam_id: uuid.UUID
     problem_id: uuid.UUID
     language: Literal["python3", "cpp17"]
-    code: str
+    code: str = Field(max_length=MAX_CODE_CHARS)
 
 
 class SubmissionOut(BaseModel):

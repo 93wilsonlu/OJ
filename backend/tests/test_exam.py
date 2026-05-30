@@ -23,6 +23,8 @@ from app.services.exam import (
     create_exam,
     delete_exam,
     get_exam,
+    get_exam_for_user,
+    get_owned_exam,
     list_exams,
     update_exam,
 )
@@ -107,6 +109,56 @@ async def test_get_exam_found():
     assert result is exam
 
 
+# ── service: candidate-scoped get (H2 IDOR) ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_exam_for_user_candidate_with_assignment_returns_exam():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result_mock = MagicMock()
+    result_mock.first.return_value = (uuid.uuid4(),)  # assignment row exists
+    db.execute = AsyncMock(return_value=result_mock)
+
+    result = await get_exam_for_user(db, exam.exam_id, uuid.uuid4(), "candidate")
+    assert result is exam
+
+
+@pytest.mark.asyncio
+async def test_get_exam_for_user_candidate_without_assignment_raises_404():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result_mock = MagicMock()
+    result_mock.first.return_value = None  # no assignment
+    db.execute = AsyncMock(return_value=result_mock)
+
+    with pytest.raises(HTTPException) as exc:
+        await get_exam_for_user(db, exam.exam_id, uuid.uuid4(), "candidate")
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_exam_for_user_interviewer_skips_assignment_check():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    db.execute = AsyncMock()
+
+    result = await get_exam_for_user(db, exam.exam_id, uuid.uuid4(), "interviewer")
+    assert result is exam
+    db.execute.assert_not_awaited()  # no assignment lookup for staff
+
+
+@pytest.mark.asyncio
+async def test_get_exam_for_user_missing_exam_raises_404():
+    db = _mock_db()
+    db.get = AsyncMock(return_value=None)
+    with pytest.raises(HTTPException) as exc:
+        await get_exam_for_user(db, uuid.uuid4(), uuid.uuid4(), "candidate")
+    assert exc.value.status_code == 404
+
+
 # ── service: create / update ───────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -141,6 +193,39 @@ async def test_delete_exam_commits():
     db = _mock_db()
     await delete_exam(db, exam)
     db.delete.assert_awaited_once_with(exam)
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_exam_cleans_up_dependent_rows():
+    """I1: exams with submissions/assignments must not 500 — deps have no DB
+    cascade, so they're deleted in FK order (judge_results → submissions →
+    assignments → exam)."""
+    exam = _make_exam()
+    sub = MagicMock()
+    sub.submission_id = uuid.uuid4()
+    judge_result = MagicMock()
+    assignment = _make_assignment(exam.exam_id, uuid.uuid4(), uuid.uuid4())
+
+    def _result(rows):
+        r = MagicMock()
+        r.scalars.return_value = iter(rows)
+        return r
+
+    db = _mock_db()
+    db.execute = AsyncMock(side_effect=[
+        _result([sub]),           # submissions for this exam
+        _result([judge_result]),  # judge results for those submissions
+        _result([assignment]),    # assignments for this exam
+    ])
+
+    await delete_exam(db, exam)
+
+    deleted = [call.args[0] for call in db.delete.await_args_list]
+    assert judge_result in deleted
+    assert sub in deleted
+    assert assignment in deleted
+    assert exam in deleted
     db.commit.assert_awaited_once()
 
 
@@ -196,6 +281,36 @@ def test_candidate_gets_403_on_create_exam(mock_create):
     mock_create.assert_not_called()
 
 
+@patch("app.routers.exam.exam_service.list_exam_problems_for_user", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_candidate_unassigned_gets_404_on_exam_problems(mock_scoped, mock_list_problems):
+    """H2 IDOR: unassigned candidate is 404'd by the scoped-exam dependency."""
+    mock_scoped.side_effect = HTTPException(status_code=404, detail="Exam not found")
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get(f"/api/v1/exams/{uuid.uuid4()}/problems")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 404
+    mock_list_problems.assert_not_called()
+
+
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_candidate_unassigned_gets_404_on_get_exam(mock_scoped):
+    """H2 IDOR: unassigned candidate can't read exam metadata by UUID."""
+    mock_scoped.side_effect = HTTPException(status_code=404, detail="Exam not found")
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get(f"/api/v1/exams/{uuid.uuid4()}")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 404
+
+
 @patch("app.routers.exam.exam_service.list_exams", new_callable=AsyncMock)
 def test_list_exams_returns_200(mock_list):
     exam = _make_exam()
@@ -211,3 +326,41 @@ def test_list_exams_returns_200(mock_list):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["title"] == exam.title
+
+
+# ── schema: end_time must be after start_time (I2) ─────────────────────────────
+
+def test_exam_create_rejects_end_before_start():
+    now = datetime.now(UTC)
+    with pytest.raises(ValueError):
+        ExamCreate(title="T", start_time=now, end_time=now - timedelta(hours=1))
+
+
+# ── service: owner-or-admin write scope (I5) ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_owned_exam_allows_owner():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result = await get_owned_exam(db, exam.exam_id, exam.created_by, "interviewer")
+    assert result is exam
+
+
+@pytest.mark.asyncio
+async def test_get_owned_exam_blocks_non_owner():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    with pytest.raises(HTTPException) as exc:
+        await get_owned_exam(db, exam.exam_id, uuid.uuid4(), "interviewer")
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_owned_exam_allows_admin():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result = await get_owned_exam(db, exam.exam_id, uuid.uuid4(), "admin")
+    assert result is exam

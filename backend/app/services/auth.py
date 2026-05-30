@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import anyio
 from fastapi import HTTPException
 from jose import jwt
 from passlib.context import CryptContext
@@ -34,7 +35,10 @@ def create_access_token(user: User) -> str:
 async def login(db: AsyncSession, email: str, password: str) -> tuple[str, str, User]:
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    if user is None or user.is_active is False or not verify_password(password, user.password_hash):
+    password_ok = user is not None and await anyio.to_thread.run_sync(
+        verify_password, password, user.password_hash
+    )
+    if user is None or user.is_active is False or not password_ok:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     access_token = create_access_token(user)
@@ -100,7 +104,7 @@ async def seed_admin(db: AsyncSession) -> None:
     admin = User(
         name=settings.ADMIN_NAME,
         email=settings.ADMIN_EMAIL,
-        password_hash=hash_password(settings.ADMIN_PASSWORD),
+        password_hash=await anyio.to_thread.run_sync(hash_password, settings.ADMIN_PASSWORD),
         role="admin",
     )
     db.add(admin)

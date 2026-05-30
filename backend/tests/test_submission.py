@@ -154,6 +154,33 @@ async def test_create_submission_after_end_time_raises_403(mock_put, mock_enqueu
 @pytest.mark.asyncio
 @patch("app.services.submission.queue_service.enqueue_submission")
 @patch("app.services.submission.storage.put_object")
+async def test_create_submission_before_start_time_raises_403(mock_put, mock_enqueue):
+    """I2: submissions before the exam start_time are rejected with 403."""
+    exam = _make_exam()
+    exam.start_time = datetime.now(UTC) + timedelta(minutes=10)
+    exam.end_time = datetime.now(UTC) + timedelta(hours=2)
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+
+    data = SubmissionCreate(
+        exam_id=exam.exam_id,
+        problem_id=uuid.uuid4(),
+        language="python3",
+        code="print('hello')",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await create_submission(db, data, uuid.uuid4(), "127.0.0.1")
+
+    assert exc.value.status_code == 403
+    assert "not started" in exc.value.detail.lower()
+    mock_put.assert_not_called()
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("app.services.submission.queue_service.enqueue_submission")
+@patch("app.services.submission.storage.put_object")
 async def test_create_submission_without_assignment_raises_403(mock_put, mock_enqueue):
     exam = _make_exam()
     candidate_id = uuid.uuid4()
@@ -242,26 +269,58 @@ async def test_get_submission_candidate_cannot_see_others():
 # ── router integration ─────────────────────────────────────────────────────────
 
 @patch("app.services.submission.storage.get_object_text")
-def test_get_submission_source_code_returns_stored_code(mock_get_text):
+async def test_get_submission_source_code_returns_stored_code(mock_get_text):
     candidate_id = uuid.uuid4()
     exam_id = uuid.uuid4()
     problem_id = uuid.uuid4()
     submission = _make_submission(candidate_id, exam_id, problem_id)
     mock_get_text.return_value = "print('hello')\n"
 
-    assert get_submission_source_code(submission) == "print('hello')\n"
+    assert await get_submission_source_code(submission) == "print('hello')\n"
     mock_get_text.assert_called_once_with(submission.code_storage_key)
 
 
 @patch("app.services.submission.storage.get_object_text")
-def test_get_submission_source_code_returns_none_when_storage_fails(mock_get_text):
+async def test_get_submission_source_code_returns_none_when_storage_fails(mock_get_text):
     candidate_id = uuid.uuid4()
     exam_id = uuid.uuid4()
     problem_id = uuid.uuid4()
     submission = _make_submission(candidate_id, exam_id, problem_id)
     mock_get_text.side_effect = RuntimeError("storage unavailable")
 
-    assert get_submission_source_code(submission) is None
+    assert await get_submission_source_code(submission) is None
+
+
+# ── C2: error_message gated like score ──────────────────────────────────────────
+
+def _make_judge_result(error_message: str = "boom: internal trace"):
+    jr = MagicMock()
+    jr.result_id = uuid.uuid4()
+    jr.submission_id = uuid.uuid4()
+    jr.verdict = "System Error"
+    jr.score = 0
+    jr.passed_count = 0
+    jr.total_count = 3
+    jr.execution_time = 0
+    jr.memory_usage = 0
+    jr.error_message = error_message
+    jr.judged_at = datetime.now(UTC)
+    return jr
+
+
+def test_judge_result_hides_error_message_when_score_hidden():
+    from app.routers.submission import _judge_result_out
+
+    out = _judge_result_out(_make_judge_result(), hide_score=True)
+    assert out.score is None
+    assert out.error_message is None
+
+
+def test_judge_result_shows_error_message_when_score_visible():
+    from app.routers.submission import _judge_result_out
+
+    out = _judge_result_out(_make_judge_result(), hide_score=False)
+    assert out.error_message == "boom: internal trace"
 
 
 def _client_for(user: User):
@@ -295,6 +354,30 @@ def test_interviewer_gets_403_on_post_submission(mock_create):
         _clear_overrides()
 
     assert resp.status_code == 403
+    mock_create.assert_not_called()
+
+
+@patch("app.routers.submission.submission_service.create_submission", new_callable=AsyncMock)
+def test_oversized_code_rejected_422(mock_create):
+    """H5: code beyond the cap is rejected by schema validation before the service."""
+    from app.schemas.submission import MAX_CODE_CHARS
+
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.post(
+            "/api/v1/submissions",
+            json={
+                "exam_id": str(uuid.uuid4()),
+                "problem_id": str(uuid.uuid4()),
+                "language": "python3",
+                "code": "x" * (MAX_CODE_CHARS + 1),
+            },
+        )
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 422
     mock_create.assert_not_called()
 
 

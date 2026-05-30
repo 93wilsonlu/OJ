@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class ExamCreate(BaseModel):
@@ -11,6 +11,12 @@ class ExamCreate(BaseModel):
     end_time: datetime
     show_score: bool = False
 
+    @model_validator(mode="after")
+    def _validate_times(self):
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
+
 
 class ExamUpdate(BaseModel):
     title: str | None = None
@@ -18,6 +24,16 @@ class ExamUpdate(BaseModel):
     start_time: datetime | None = None
     end_time: datetime | None = None
     show_score: bool | None = None
+
+    @model_validator(mode="after")
+    def _validate_times(self):
+        if (
+            self.start_time is not None
+            and self.end_time is not None
+            and self.end_time <= self.start_time
+        ):
+            raise ValueError("end_time must be after start_time")
+        return self
 
 
 class ExamOut(BaseModel):

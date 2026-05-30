@@ -3,6 +3,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+import anyio
 from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -78,7 +79,7 @@ async def create_user(
     user = User(
         name=data.name.strip(),
         email=data.email,
-        password_hash=hash_password(data.password),
+        password_hash=await anyio.to_thread.run_sync(hash_password, data.password),
         role=data.role,
         is_active=True,
     )
@@ -148,7 +149,7 @@ async def update_user(
         if field == "name":
             setattr(user, field, value.strip())
         elif field == "password":
-            setattr(user, "password_hash", hash_password(value))
+            setattr(user, "password_hash", await anyio.to_thread.run_sync(hash_password, value))
         elif field == "is_active":
             if not value and user.user_id == current_user.user_id:
                 raise HTTPException(status_code=403, detail="Cannot deactivate your own account")
