@@ -4,17 +4,17 @@ Five-axis review of `backend/`. HTTP/service/schema layers are clean; the judge 
 
 ## 🔴 Critical
 
-- **C1 — Sandbox resource limits not enforced.** `services/sandbox.py:43-50,95-105`: `mem_limit` hardcoded `"512m"`, `memory_limit_mb` ignored; `mem_used_kb` always 0. No `pids_limit` (fork bomb → host PID exhaustion), no CPU cap, runs as root, writable rootfs. (`network_mode="none"` is good.) Fix: per-test cgroup mem, `pids_limit`, `nano_cpus`, `cap_drop=["ALL"]`, `read_only`, non-root UID.
-- **C2 — Internal exceptions leaked to candidates.** `worker.py:71` stores `str(e)`; `routers/submission.py:30-41` `_judge_result_out` hides score but always returns `error_message`. Fix: generic message for System Error, log detail server-side, gate `error_message` like score.
-- **C3 — Sync MinIO + bcrypt block the event loop.** `services/storage.py` (all), `submission.py:86,134`, `routers/problem.py:117-118`, `auth.py:18,22` called inline in async handlers → stalls whole API. Fix: `anyio.to_thread.run_sync`.
+- **C1 — Sandbox resource limits not enforced.** ✅ Resolved (`b87ca37`). `services/sandbox.py` now sets per-test `mem_limit`/`memswap_limit`, `pids_limit`, `nano_cpus`, `cap_drop=["ALL"]`, `security_opt=["no-new-privileges"]`, non-root `SANDBOX_USER`, and reads peak memory from the cgroup. (`network_mode="none"` retained.)
+- **C2 — Internal exceptions leaked to candidates.** ✅ Resolved (`2f49790`). `worker.py` stores a generic `SYSTEM_ERROR_MESSAGE` (real detail logged server-side); `routers/submission.py:39` gates `error_message` behind `hide_score` like score.
+- **C3 — Sync MinIO + bcrypt block the event loop.** ✅ Resolved (`a2126eb`). Storage and bcrypt calls offloaded via `anyio.to_thread.run_sync` (`services/auth.py:38,107`, `services/submission.py:92,142`, `services/problem.py:121-175`).
 
 ## 🟠 Important
 
-- **I1 — `delete_exam` 500s on exams with data.** `services/exam.py:99-101` just `db.delete(exam)`; FKs have no cascade (unlike `delete_problem`). Fix: clean up deps or add `ondelete="CASCADE"` + migration.
-- **I2 — Submissions accepted before exam start.** `services/submission.py:75-78` only checks `end_time`. Add start check + `end_time > start_time` validator.
+- **I1 — `delete_exam` 500s on exams with data.** ✅ Resolved (`6955740`). `services/exam.py:114-137` now deletes dependents in FK order (JudgeResult → Submission → ExamAssignment → Exam) before the exam; covered by `test_delete_exam_commits` and `test_delete_exam_cleans_up_dependent_rows`. (Note: orphaned MinIO objects — submission `code_storage_key`, judge `log_storage_key` — are not purged; tracked separately, not part of the 500 fix.)
+- **I2 — Submissions accepted before exam start.** ✅ Resolved (`f5fb867`). `services/submission.py:78-81` rejects submissions before `start_time` (403 "Exam has not started") in addition to the `end_time` check.
 - **I3 — Default `SECRET_KEY="changeme"` only warns** (`config.py:9`, `main.py:17-21`) → forgeable JWTs. Fail-closed in prod; same for default `minioadmin`.
 - **I4 — Judge infra failures misclassified.** `sandbox.py:38-41,68-69`: runtime `images.pull` can hang; any docker error → "Compile Error" with raw text (feeds C2). Container leaks if worker killed mid-run. Fix: pre-pull images, distinguish System Error vs Compile Error, robust cleanup/reaper.
-- **I5 — No ownership scoping on exam writes.** `routers/exam.py:64-86`: any interviewer can edit/delete any exam. Decide intentional vs scope by `created_by`.
+- **I5 — No ownership scoping on exam writes.** ✅ Resolved (`f88c28c`). `services/exam.py:78-88` `get_owned_exam` enforces owner-or-admin scope (403 otherwise); used by exam update/delete in `routers/exam.py:72,86`.
 
 ## 🟡 Suggestions
 
@@ -30,6 +30,6 @@ Five-axis review of `backend/`. HTTP/service/schema layers are clean; the judge 
 
 No N+1 (single multi-join queries); IDOR scoping via `get_exam_for_user` (404 not 403); input caps on code/uploads; admin self-protection; JWT pins `HS256` + re-checks `is_active`.
 
-## Suggested order
+## Remaining work
 
-C1 → C3 → C2 → I1/I2 → I3.
+C1, C2, C3, I1, I2, I5 are resolved (see ✅ above). Still open: **I3** (fail-closed on default `SECRET_KEY`/`minioadmin`) → **I4** (pre-pull images, distinguish System vs Compile Error, container reaper), plus the 🟡 suggestions.

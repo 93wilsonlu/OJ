@@ -14,7 +14,6 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.main import app
 from app.models.exam import Exam
-from app.models.exam_assignment import ExamAssignment
 from app.models.user import User
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
 from app.services.auth import hash_password
@@ -53,17 +52,6 @@ def _make_exam(title: str = "Test Exam") -> Exam:
     e.created_by = uuid.uuid4()
     e.created_at = datetime.now(UTC)
     return e
-
-
-def _make_assignment(exam_id: uuid.UUID, candidate_id: uuid.UUID, problem_id: uuid.UUID) -> ExamAssignment:
-    a = ExamAssignment()
-    a.assignment_id = uuid.uuid4()
-    a.exam_id = exam_id
-    a.candidate_id = candidate_id
-    a.problem_id = problem_id
-    a.assigned_difficulty = None
-    a.created_at = datetime.now(UTC)
-    return a
 
 
 def _mock_db(rows=None):
@@ -192,40 +180,26 @@ async def test_delete_exam_commits():
     exam = _make_exam()
     db = _mock_db()
     await delete_exam(db, exam)
-    db.delete.assert_awaited_once_with(exam)
     db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_delete_exam_cleans_up_dependent_rows():
-    """I1: exams with submissions/assignments must not 500 — deps have no DB
-    cascade, so they're deleted in FK order (judge_results → submissions →
-    assignments → exam)."""
+async def test_delete_exam_deletes_dependents_in_fk_order():
+    """I1: exams with submissions/assignments must not 500. Deps have no DB
+    cascade and the models declare no relationship(), so the unit-of-work can't
+    order the deletes — we must emit explicit DELETEs in FK order
+    (judge_results → submissions → assignments → exam) ourselves."""
     exam = _make_exam()
-    sub = MagicMock()
-    sub.submission_id = uuid.uuid4()
-    judge_result = MagicMock()
-    assignment = _make_assignment(exam.exam_id, uuid.uuid4(), uuid.uuid4())
-
-    def _result(rows):
-        r = MagicMock()
-        r.scalars.return_value = iter(rows)
-        return r
-
     db = _mock_db()
-    db.execute = AsyncMock(side_effect=[
-        _result([sub]),           # submissions for this exam
-        _result([judge_result]),  # judge results for those submissions
-        _result([assignment]),    # assignments for this exam
-    ])
 
     await delete_exam(db, exam)
 
-    deleted = [call.args[0] for call in db.delete.await_args_list]
-    assert judge_result in deleted
-    assert sub in deleted
-    assert assignment in deleted
-    assert exam in deleted
+    # Each delete() statement targets one table; assert they were issued in the
+    # order children-before-parents so the FK constraint never trips.
+    tables = [
+        call.args[0].table.name for call in db.execute.await_args_list
+    ]
+    assert tables == ["judge_results", "submissions", "exam_assignments", "exams"]
     db.commit.assert_awaited_once()
 
 

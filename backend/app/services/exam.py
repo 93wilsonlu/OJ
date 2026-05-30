@@ -2,7 +2,7 @@ import uuid
 from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -114,26 +114,16 @@ async def update_exam(db: AsyncSession, exam: Exam, data: ExamUpdate) -> Exam:
 async def delete_exam(db: AsyncSession, exam: Exam) -> None:
     eid = exam.exam_id
 
-    # Dependent rows have no DB-level cascade — clean up in FK order.
-    result = await db.execute(select(Submission).where(Submission.exam_id == eid))
-    submissions = list(result.scalars())
-    if submissions:
-        sub_ids = [s.submission_id for s in submissions]
-        result = await db.execute(
-            select(JudgeResult).where(JudgeResult.submission_id.in_(sub_ids))
-        )
-        for jr in result.scalars():
-            await db.delete(jr)
-        for sub in submissions:
-            await db.delete(sub)
-
-    result = await db.execute(
-        select(ExamAssignment).where(ExamAssignment.exam_id == eid)
-    )
-    for assignment in result.scalars():
-        await db.delete(assignment)
-
-    await db.delete(exam)
+    # Dependent rows have no DB-level ON DELETE CASCADE, and these models declare
+    # no ORM relationship() — so the unit-of-work can't infer the FK delete order
+    # and may emit `DELETE FROM exams` before its children, violating
+    # exam_assignments_exam_id_fkey. Issue explicit deletes in FK order, which run
+    # immediately in the order written.
+    sub_ids = select(Submission.submission_id).where(Submission.exam_id == eid)
+    await db.execute(delete(JudgeResult).where(JudgeResult.submission_id.in_(sub_ids)))
+    await db.execute(delete(Submission).where(Submission.exam_id == eid))
+    await db.execute(delete(ExamAssignment).where(ExamAssignment.exam_id == eid))
+    await db.execute(delete(Exam).where(Exam.exam_id == eid))
     await db.commit()
 
 
