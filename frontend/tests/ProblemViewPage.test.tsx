@@ -122,4 +122,28 @@ describe('ProblemViewPage', () => {
       expect(screen.getByText(/Error:/i)).toBeInTheDocument()
     })
   })
+
+  test('displays time limit in metadata', async () => {
+    renderPage('p1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/Time limit: 1000 ms/)).toBeInTheDocument()
+    })
+  })
+
+  test('displays memory limit in metadata', async () => {
+    renderPage('p1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/Memory: 256 MB/)).toBeInTheDocument()
+    })
+  })
+
+  test('displays all allowed languages', async () => {
+    renderPage('p1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/Languages: python3, cpp17/)).toBeInTheDocument()
+    })
+  })
 })

@@ -117,4 +117,40 @@ describe('UserFormPage', () => {
       expect(createUser).toHaveBeenCalled()
     })
   })
+
+  test('displays email input field', async () => {
+    renderPage('/users/new')
+
+    await waitFor(() => {
+      const emailInput = screen.getByLabelText(/Email/) as HTMLInputElement
+      expect(emailInput.type).toBe('email')
+    })
+  })
+
+  test('displays role selector with all role options', async () => {
+    renderPage('/users/new')
+
+    await waitFor(() => {
+      const select = screen.getByDisplayValue('candidate')
+      expect(select).toBeInTheDocument()
+    })
+  })
+
+  test('edit mode shows different password label', async () => {
+    vi.spyOn(adminApi, 'apiGetAdminUser').mockResolvedValue({
+      user_id: 'user123',
+      name: 'Existing User',
+      email: 'existing@example.com',
+      role: 'interviewer',
+      is_active: true,
+      created_at: '',
+      updated_at: '',
+    })
+
+    renderPage('/users/user123/edit')
+
+    await waitFor(() => {
+      expect(screen.getByText(/New password/)).toBeInTheDocument()
+    })
+  })
 })

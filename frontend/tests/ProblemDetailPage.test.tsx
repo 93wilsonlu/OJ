@@ -80,4 +80,27 @@ describe('ProblemDetailPage', () => {
       expect(apiGetProblem).toHaveBeenCalledWith('token', 'p1')
     })
   })
+
+  test('gets access token before fetching', async () => {
+    const getAccessToken = vi.fn().mockResolvedValue('token')
+    vi.spyOn(useAuthModule, 'useAuth').mockReturnValue({
+      user: { user_id: 'user-1', name: 'User', email: 'user@example.com', role: 'candidate' },
+      accessToken: 'token',
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken,
+    })
+
+    renderPage('p1')
+
+    await waitFor(() => {
+      expect(getAccessToken).toHaveBeenCalled()
+    })
+  })
+
+  test('handles missing problem ID gracefully', () => {
+    renderPage('')
+
+    expect(screen.queryByText('Loading')).toBeNull()
+  })
 })

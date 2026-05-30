@@ -133,4 +133,58 @@ describe('ProblemsPage', () => {
       expect(screen.getByText(/Error:/i)).toBeInTheDocument()
     })
   })
+
+  test('displays problems in table format', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Array Sum')).toBeInTheDocument()
+      expect(screen.getByText('Graph Traversal')).toBeInTheDocument()
+    })
+  })
+
+  test('shows table headers', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Title')).toBeInTheDocument()
+      expect(screen.getByText('Difficulty')).toBeInTheDocument()
+    })
+  })
+
+  test('displays time limits for problems', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('1000 ms')).toBeInTheDocument()
+      expect(screen.getByText('2000 ms')).toBeInTheDocument()
+    })
+  })
+
+  test('displays memory limits for problems', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('256 MB')).toBeInTheDocument()
+      expect(screen.getByText('512 MB')).toBeInTheDocument()
+    })
+  })
+
+  test('shows allowed languages for problems', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('python3')).toBeInTheDocument()
+      expect(screen.getByText('cpp17')).toBeInTheDocument()
+    })
+  })
+
+  test('displays both difficulty badges correctly', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      const badges = screen.getAllByText(/easy|hard/)
+      expect(badges.length).toBeGreaterThanOrEqual(2)
+    })
+  })
 })

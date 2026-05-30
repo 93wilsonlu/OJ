@@ -134,4 +134,57 @@ describe('ExamManagePage', () => {
       expect(screen.getByText(/Candidates/)).toBeInTheDocument()
     })
   })
+
+  test('shows candidate name and email in selector', async () => {
+    renderPage('/exams/new')
+
+    await waitFor(() => {
+      expect(screen.getByText('Candidate 1')).toBeInTheDocument()
+      expect(screen.getByText('c1@example.com')).toBeInTheDocument()
+    })
+  })
+
+  test('displays problem title in selector', async () => {
+    renderPage('/exams/new')
+
+    await waitFor(() => {
+      expect(screen.getByText('Problem 1')).toBeInTheDocument()
+    })
+  })
+
+  test('shows difficulty badge for problems', async () => {
+    renderPage('/exams/new')
+
+    await waitFor(() => {
+      expect(screen.getByText('easy')).toBeInTheDocument()
+    })
+  })
+
+  test('renders Save button for new exam', async () => {
+    renderPage('/exams/new')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create exam' })).toBeInTheDocument()
+    })
+  })
+
+  test('renders Save button for existing exam', async () => {
+    vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue({
+      exam_id: 'exam123',
+      title: 'Test',
+      description: '',
+      start_time: '2026-06-01T10:00:00Z',
+      end_time: '2026-06-01T12:00:00Z',
+      show_score: false,
+      created_by: null,
+      created_at: '2026-05-31T00:00:00Z',
+    })
+    vi.spyOn(examsApi, 'apiListAssignments').mockResolvedValue([])
+
+    renderPage('/exams/exam123/manage')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
+    })
+  })
 })
