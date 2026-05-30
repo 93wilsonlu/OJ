@@ -15,6 +15,7 @@ from app.deps import get_current_user
 from app.main import app
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.problem import Problem
 from app.models.user import User
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
 from app.services.auth import hash_password
