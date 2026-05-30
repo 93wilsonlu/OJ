@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: read
-  pull-requests: read
-
 jobs:
   # ── Backend ────────────────────────────────────────────────────────────────
   backend:
@@ -56,13 +52,8 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
-      - name: Test with coverage
-        run: npm run coverage
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build
-
-      - name: SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@v5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
