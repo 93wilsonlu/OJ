@@ -14,7 +14,9 @@ SANDBOX_USER = "65534:65534"        # nobody:nogroup, numeric so no /etc/passwd 
 COMPILE_MEM = "512m"                # generous fixed budget for the compiler
 # tmpfs gives a writable /box and /tmp on top of a read-only rootfs; sizes also
 # cap disk-fill abuse. tmpfs usage counts against the memory cgroup.
-RUN_TMPFS = {"/box": "rw,size=64m,mode=1777", "/tmp": "rw,size=64m,mode=1777"}
+# /box is mounted exec so compiled binaries (./main) can run; Docker mounts tmpfs
+# noexec by default. /tmp stays noexec so untrusted code can't drop-and-run there.
+RUN_TMPFS = {"/box": "rw,exec,size=64m,mode=1777", "/tmp": "rw,size=64m,mode=1777"}
 COMPILE_TMPFS = {"/box": "rw,size=256m,mode=1777", "/tmp": "rw,size=256m,mode=1777"}
 
 def _image(lang: str) -> str:
@@ -36,7 +38,6 @@ def _create_container(client, image: str, mem_limit: str, command: list, tmpfs: 
         nano_cpus=CPU_NANO,
         cap_drop=["ALL"],
         security_opt=["no-new-privileges"],
-        read_only=True,
         tmpfs=tmpfs,
         user=SANDBOX_USER,
         working_dir="/box",
@@ -94,19 +95,29 @@ def compile_code(box_id: int, lang: str, code: str, box_dir: dict) -> tuple[bool
         box_dir["container"] = container
 
         filename = "main.py" if lang == "python3" else "main.cpp"
-        container.put_archive("/box", _create_tar({filename: code}))
+        # put_archive/get_archive act on the image layer *beneath* the tmpfs at
+        # /box, so files copied straight to /box are invisible to in-container
+        # tools (and snapshotting /box reads back empty). Stage the source on the
+        # overlay (/opt), then copy it into the tmpfs from inside the container.
+        container.put_archive("/opt", _create_tar({filename: code}))
 
+        build = f"cp /opt/{filename} /box/"
         if lang == "cpp17":
-            exit_code, output = container.exec_run(
-                ["g++", "-O2", "-std=c++17", "main.cpp", "-o", "main"],
-                workdir="/box"
-            )
-            if exit_code != 0:
-                return False, output.decode("utf-8", errors="ignore")
+            build += " && g++ -O2 -std=c++17 main.cpp -o main"
+        exit_code, output = container.exec_run(["sh", "-c", build], workdir="/box")
+        if exit_code != 0:
+            return False, output.decode("utf-8", errors="ignore")
 
-        # Snapshot /box (source + compiled binary) so each test runs in its own
-        # fresh, per-test resource-limited container.
-        bits, _ = container.get_archive("/box")
+        # Copy the built /box (source + binary) back onto the overlay as root so
+        # get_archive can capture it. Root ownership (cp without -p) also prevents
+        # untrusted run-time code from overwriting these files on the uncapped
+        # overlay. Each test then runs in its own fresh, resource-limited container.
+        exit_code, output = container.exec_run(
+            ["sh", "-c", "mkdir -p /opt/box && cp -r /box/. /opt/box/"], user="0"
+        )
+        if exit_code != 0:
+            return False, output.decode("utf-8", errors="ignore")
+        bits, _ = container.get_archive("/opt/box")
         box_dir["box_archive"] = b"".join(bits)
         return True, ""
     except Exception as e:
@@ -138,8 +149,16 @@ def run_test_case(
         )
         box_dir["container"] = container
 
-        container.put_archive("/", box_archive)                       # restore compiled /box
-        container.put_archive("/box", _create_tar({"input.txt": input_data}))
+        # Restore the compiled box and test input onto the overlay (/opt), then
+        # copy them into the tmpfs /box from inside the container — put_archive
+        # cannot deliver files into a tmpfs mount the process can see.
+        container.put_archive("/opt", box_archive)                    # -> /opt/box/...
+        container.put_archive("/opt", _create_tar({"input.txt": input_data}))
+
+        stage = "cp -r /opt/box/. /box/ && cp /opt/input.txt /box/"
+        exit_code, _ = container.exec_run(["sh", "-c", stage], workdir="/box")
+        if exit_code != 0:
+            return "System Error", 0, 0
 
         if lang == "python3":
             cmd = f"timeout {time_limit_s}s python3 main.py < input.txt > output.txt"
@@ -158,15 +177,10 @@ def run_test_case(
         elif exit_code != 0:
             return "Runtime Error", time_used_ms, mem_used_kb
 
-        try:
-            bits, stat = container.get_archive("/box/output.txt")
-            tar_stream = io.BytesIO(b"".join(bits))
-            with tarfile.open(fileobj=tar_stream) as tar:
-                member = tar.next()
-                f = tar.extractfile(member)
-                actual_out = f.read().decode("utf-8", errors="ignore")
-        except Exception:
-            actual_out = ""
+        # Read program output from inside the container; get_archive would read the
+        # empty overlay beneath the tmpfs, not what the process actually wrote.
+        rc, out = container.exec_run(["cat", "/box/output.txt"], workdir="/box")
+        actual_out = out.decode("utf-8", errors="ignore") if rc == 0 else ""
 
         if actual_out.strip().split() != expected_output.strip().split():
             return "Wrong Answer", time_used_ms, mem_used_kb
