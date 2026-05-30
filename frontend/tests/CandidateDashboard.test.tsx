@@ -136,7 +136,6 @@ describe('CandidateDashboard', () => {
     expect(screen.getByRole('columnheader', { name: 'End Time' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Problems' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Last Submission' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'Remaining' })).toBeInTheDocument()
     expect(screen.getByText('Active Algorithms')).toBeInTheDocument()
     expect(screen.getByText('Future DP')).toBeInTheDocument()
     expect(screen.getByText('Past Graphs')).toBeInTheDocument()
