@@ -5,9 +5,9 @@ import { useAuth } from '../hooks/useAuth'
 import type { Problem } from '../types/problem'
 
 function difficultyStyle(d: string) {
-  if (d === 'easy') return 'bg-green-900/60 text-green-300 ring-1 ring-green-700'
-  if (d === 'hard') return 'bg-red-900/60 text-red-300 ring-1 ring-red-700'
-  return 'bg-yellow-900/60 text-yellow-300 ring-1 ring-yellow-700'
+  if (d === 'easy') return 'bg-green-50 text-green-700 ring-1 ring-green-200'
+  if (d === 'hard') return 'bg-red-50 text-red-700 ring-1 ring-red-200'
+  return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
 }
 
 function Block({ label, children }: { label: string; children: React.ReactNode }) {
@@ -44,7 +44,7 @@ export default function ProblemViewPage() {
     })
   }, [problemId, getAccessToken])
 
-  if (error) return <div className="p-8 text-red-400 text-sm font-mono">Error: {error}</div>
+  if (error) return <div className="p-8 text-red-700 text-sm font-mono">Error: {error}</div>
   if (!problem) return <div className="p-8 text-oj-fg-muted text-sm font-mono">Loading…</div>
 
   return (

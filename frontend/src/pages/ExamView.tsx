@@ -8,9 +8,9 @@ import type { Exam, ExamProblem } from '../types/exam'
 type ExamStatus = 'Active' | 'Upcoming' | 'Ended'
 
 const STATUS_STYLE: Record<ExamStatus, string> = {
-  Active: 'bg-green-900/60 text-green-300 ring-1 ring-green-700',
-  Upcoming: 'bg-blue-900/60 text-blue-300 ring-1 ring-blue-700',
-  Ended: 'bg-slate-700/60 text-slate-400 ring-1 ring-slate-600',
+  Active: 'bg-green-50 text-green-700 ring-1 ring-green-200',
+  Upcoming: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
+  Ended: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
 }
 
 function examStatus(exam: Exam, now: Date): ExamStatus {
@@ -101,8 +101,8 @@ export default function ExamView() {
     }
   }, [examId, getAccessToken])
 
-  if (loading) return <div className="p-8 text-oj-fg-muted text-sm font-mono">Loading...</div>
-  if (error) return <div className="p-8 text-red-400 text-sm font-mono">Error: {error}</div>
+  if (loading) return <div className="p-8 text-sm text-oj-fg-muted">Loading...</div>
+  if (error) return <div className="p-8 text-sm font-medium text-red-700">Error: {error}</div>
   if (!exam || !examId) return null
 
   const status = examStatus(exam, now)
@@ -110,71 +110,72 @@ export default function ExamView() {
   const isStaff = user?.role === 'interviewer' || user?.role === 'admin'
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-5">
-        <Link to="/exams" className="text-xs text-oj-accent hover:underline">
+        <Link to="/exams" className="text-sm font-medium text-oj-accent hover:underline">
           Back to exams
         </Link>
       </div>
 
-      <section className="mb-6 border border-oj-border bg-oj-surface rounded-lg p-5">
+      <section className="mb-6 rounded-lg border border-oj-border bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-xl font-semibold text-oj-fg">{exam.title}</h1>
+              <h1 className="text-2xl font-semibold text-oj-fg">{exam.title}</h1>
               <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs
-                            font-medium font-mono ${STATUS_STYLE[status]}`}
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[status]}`}
               >
                 {status}
               </span>
             </div>
             {exam.description && (
-              <p className="text-sm text-oj-fg-muted mt-2 max-w-3xl">
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-oj-fg-muted">
                 {exam.description}
               </p>
             )}
           </div>
-          <div className="text-right">
-            <div className="text-xs text-oj-fg-muted font-mono">Remaining</div>
-            <div className="text-lg text-oj-fg font-mono">{remainingLabel(exam, now)}</div>
+          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-right">
+            <div className="text-xs font-semibold uppercase text-oj-accent">Remaining</div>
+            <div className="mt-1 font-mono text-lg text-oj-fg">{remainingLabel(exam, now)}</div>
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3 mt-5 text-sm">
-          <div className="rounded border border-oj-border bg-oj-bg px-3 py-2">
-            <div className="text-xs text-oj-fg-muted font-mono">Start Time</div>
-            <div className="text-oj-fg font-mono mt-0.5">{fmtDate(exam.start_time)}</div>
+        <div className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <div className="text-xs font-medium text-oj-fg-muted">Start Time</div>
+            <div className="mt-0.5 font-mono text-oj-fg">{fmtDate(exam.start_time)}</div>
           </div>
-          <div className="rounded border border-oj-border bg-oj-bg px-3 py-2">
-            <div className="text-xs text-oj-fg-muted font-mono">End Time</div>
-            <div className="text-oj-fg font-mono mt-0.5">{fmtDate(exam.end_time)}</div>
+          <div>
+            <div className="text-xs font-medium text-oj-fg-muted">End Time</div>
+            <div className="mt-0.5 font-mono text-oj-fg">{fmtDate(exam.end_time)}</div>
           </div>
-          <div className="rounded border border-oj-border bg-oj-bg px-3 py-2">
-            <div className="text-xs text-oj-fg-muted font-mono">Problems</div>
-            <div className="text-oj-fg font-mono mt-0.5">{problems.length}</div>
+          <div>
+            <div className="text-xs font-medium text-oj-fg-muted">Problems</div>
+            <div className="mt-0.5 font-mono text-oj-fg">{problems.length}</div>
           </div>
         </div>
       </section>
 
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-oj-fg-muted uppercase tracking-wide">
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold uppercase text-oj-fg-muted">
             Problems
           </h2>
           {status !== 'Active' && user?.role === 'candidate' && (
-            <p className="text-xs text-amber-400 font-mono">
-              {status === 'Upcoming' ? 'Submissions open at start time.' : 'This exam has ended.'}
+            <p className="mt-1 text-sm text-oj-fg-muted">
+              {status === 'Upcoming' ? 'Submissions open at start time.' : "The exam has ended, so you can't open problems."}
             </p>
           )}
         </div>
 
         {problems.length === 0 ? (
-          <p className="text-sm text-oj-fg-muted">No problems assigned yet.</p>
+          <div className="rounded-lg border border-oj-border bg-white px-4 py-8 text-sm text-oj-fg-muted shadow-sm">
+            No problems assigned yet.
+          </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-oj-border bg-oj-surface">
+          <div className="overflow-x-auto rounded-lg border border-oj-border bg-white shadow-sm">
             <table className="min-w-full text-sm">
-              <thead className="bg-oj-surface2 text-oj-fg-muted">
+              <thead className="border-b border-oj-border bg-oj-surface2 text-oj-fg-muted">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">#</th>
                   <th className="px-4 py-3 text-left font-semibold">Problem</th>
@@ -185,40 +186,39 @@ export default function ExamView() {
               </thead>
               <tbody className="divide-y divide-oj-border">
                 {problems.map((problem, index) => (
-                  <tr key={problem.problem_id} className="hover:bg-oj-muted/60 transition-colors">
-                    <td className="px-4 py-3 text-oj-fg-muted font-mono">
+                  <tr key={problem.problem_id} className="transition-colors hover:bg-red-50/40">
+                    <td className="px-4 py-3 font-mono text-oj-fg-muted">
                       {index + 1}
                     </td>
-                    <td className="px-4 py-3 min-w-[240px]">
-                      <div className="font-medium text-oj-fg">{problem.title}</div>
-                      <div className="text-xs text-oj-fg-muted font-mono mt-0.5">
+                    <td className="min-w-[240px] px-4 py-3">
+                      <div className="font-semibold text-oj-fg">{problem.title}</div>
+                      <div className="mt-0.5 font-mono text-xs text-oj-fg-muted">
                         {problem.problem_id.slice(0, 8)}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-oj-fg-muted font-mono whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-oj-fg-muted">
                       {problem.time_limit} ms / {problem.memory_limit} MB
                     </td>
-                    <td className="px-4 py-3 text-oj-fg-muted font-mono whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-oj-fg-muted">
                       {languageLabel(problem.allowed_langs)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {canSubmit ? (
                         <Link
                           to={`/exams/${examId}/problems/${problem.problem_id}`}
-                          className="px-3 py-1.5 rounded-md text-xs font-medium
-                                     bg-oj-accent text-oj-bg hover:bg-oj-accent/90"
+                          className="rounded-md bg-oj-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-oj-accent-dim"
                         >
                           Solve
                         </Link>
                       ) : isStaff ? (
                         <Link
                           to={`/problems/${problem.problem_id}/view`}
-                          className="text-xs text-oj-accent hover:underline"
+                          className="text-xs font-medium text-oj-accent hover:underline"
                         >
                           View
                         </Link>
                       ) : (
-                        <span className="text-xs text-oj-fg-muted font-mono">
+                        <span className="font-mono text-xs text-oj-fg-muted">
                           {status === 'Upcoming' ? 'Not started' : 'Ended'}
                         </span>
                       )}

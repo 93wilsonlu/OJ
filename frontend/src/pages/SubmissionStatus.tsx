@@ -23,7 +23,7 @@ export default function SubmissionStatus() {
   const { data, error } = useSubmissionPoller(submissionId ?? null, getAccessToken)
 
   if (error) {
-    return <div className="p-8 text-red-400 text-sm font-mono">Error: {error}</div>
+    return <div className="p-8 text-red-700 text-sm font-mono">Error: {error}</div>
   }
 
   if (!data) {
@@ -84,7 +84,7 @@ export default function SubmissionStatus() {
       {jr?.error_message && (
         <section className="mt-5">
           <h2 className="mb-2 text-sm font-semibold text-oj-fg">Judge Message</h2>
-          <pre className="overflow-auto rounded-lg border border-red-700/50 bg-red-950/30 p-3 text-xs text-red-300 whitespace-pre-wrap">
+          <pre className="overflow-auto rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 whitespace-pre-wrap">
             {jr.error_message}
           </pre>
         </section>
@@ -97,8 +97,8 @@ export default function SubmissionStatus() {
             <Link
               to={editorUrl}
               onClick={saveCodeForEditor}
-              className="rounded-md bg-oj-accent px-3 py-1.5 text-xs font-semibold text-oj-bg
-                         hover:bg-oj-accent/90"
+              className="rounded-md bg-oj-accent px-3 py-1.5 text-xs font-semibold text-white
+                         hover:bg-oj-accent-dim"
             >
               Use in editor
             </Link>

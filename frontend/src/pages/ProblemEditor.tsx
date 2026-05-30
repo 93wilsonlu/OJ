@@ -19,7 +19,7 @@ const LANGUAGE_OPTIONS: Record<string, { label: string; monaco: string; starter:
   cpp17: {
     label: 'C++17',
     monaco: 'cpp',
-    starter: '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Write your solution here\n    return 0;\n}\n',
+    starter: '# Write your solution here\n',
   },
 }
 
@@ -177,7 +177,7 @@ function SubmissionPanel({
       </div>
 
       {error && (
-        <pre className="max-h-32 overflow-auto rounded border border-red-700/50 bg-red-950/30 p-3 text-xs text-red-300 whitespace-pre-wrap">
+        <pre className="max-h-32 overflow-auto rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700 whitespace-pre-wrap">
           {error}
         </pre>
       )}
@@ -334,8 +334,8 @@ export default function ProblemEditor() {
           type="button"
           onClick={handleSubmit}
           disabled={submitting || !problem}
-          className="rounded-md bg-oj-accent px-4 py-1.5 text-sm font-semibold text-oj-bg
-                     transition-colors hover:bg-oj-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-oj-accent px-4 py-1.5 text-sm font-semibold text-white
+                     transition-colors hover:bg-oj-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? 'Submitting...' : 'Submit'}
         </button>
@@ -373,12 +373,12 @@ export default function ProblemEditor() {
 
           <footer className="shrink-0 border-t border-oj-border bg-oj-surface px-4 py-3">
             {submitError && (
-              <div className="mb-3 rounded border border-red-700/50 bg-red-950/30 p-3 text-sm text-red-300">
+              <div className="mb-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 {submitError}
               </div>
             )}
             {pollError && (
-              <div className="mb-3 rounded border border-red-700/50 bg-red-950/30 p-3 text-sm text-red-300">
+              <div className="mb-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 {pollError}
               </div>
             )}

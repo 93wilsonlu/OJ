@@ -50,7 +50,7 @@ function UserRow({
       <td className="px-4 py-3 text-oj-fg-muted">{user.email}</td>
       <td className="px-4 py-3 text-oj-fg-muted font-mono text-xs">{user.role}</td>
       <td className="px-4 py-3">
-        <span className={user.is_active ? 'text-green-400' : 'text-slate-500'}>
+        <span className={user.is_active ? 'text-green-700' : 'text-slate-500'}>
           {user.is_active ? 'Active' : 'Inactive'}
         </span>
       </td>
@@ -66,7 +66,7 @@ function UserRow({
           <button
             onClick={() => onDelete(user)}
             disabled={isSelf || deleting}
-            className="px-3 py-1.5 rounded-md text-xs text-red-400 hover:bg-red-400/10
+            className="px-3 py-1.5 rounded-md text-xs text-red-700 hover:bg-red-50
                        disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {deleting ? 'Deleting…' : 'Delete'}
@@ -173,8 +173,8 @@ export default function UserManagement() {
         </div>
         <button
           onClick={() => navigate('/admin/users/new')}
-          className="px-4 py-2 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
-                     hover:bg-oj-accent/90"
+          className="px-4 py-2 rounded-md text-sm font-medium bg-oj-accent text-white
+                     hover:bg-oj-accent-dim"
         >
           + New user
         </button>
@@ -210,14 +210,14 @@ export default function UserManagement() {
         </select>
       </div>
 
-      {error && <p className="text-red-400 text-sm font-mono mb-4">Error: {error}</p>}
+      {error && <p className="text-red-700 text-sm font-mono mb-4">Error: {error}</p>}
 
       {loading ? (
         <div className="p-8 text-oj-fg-muted text-sm font-mono">Loading users...</div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-oj-border">
           <table className="w-full text-sm">
-            <thead className="bg-oj-surface/50 text-oj-fg-muted">
+            <thead className="bg-oj-surface2 text-oj-fg-muted">
               <tr>
                 <th className="text-left px-4 py-2.5">Name</th>
                 <th className="text-left px-4 py-2.5">Email</th>

@@ -5,9 +5,9 @@ import { useAuth } from '../hooks/useAuth'
 import type { Difficulty, Problem } from '../types/problem'
 
 const DIFFICULTY_STYLE: Record<Difficulty, string> = {
-  easy:   'bg-green-900/60 text-green-300 ring-1 ring-green-700',
-  medium: 'bg-amber-900/60 text-amber-300 ring-1 ring-amber-700',
-  hard:   'bg-red-900/60 text-red-300 ring-1 ring-red-700',
+  easy:   'bg-green-50 text-green-700 ring-1 ring-green-200',
+  medium: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+  hard:   'bg-red-50 text-red-700 ring-1 ring-red-200',
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ export default function ProblemsPage() {
   }
 
   if (loading) return <div className="p-8 text-oj-fg-muted text-sm font-mono">Loading…</div>
-  if (error) return <div className="p-8 text-red-400 text-sm font-mono">Error: {error}</div>
+  if (error) return <div className="p-8 text-red-700 text-sm font-mono">Error: {error}</div>
 
   const canWrite = user?.role === 'problem_admin' || user?.role === 'admin'
 
@@ -55,7 +55,7 @@ export default function ProblemsPage() {
             <button
               onClick={() => navigate('/problems/new')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium
-                         bg-oj-accent text-oj-bg hover:bg-oj-accent/90 transition-colors"
+                         bg-oj-accent text-white hover:bg-oj-accent-dim transition-colors"
             >
               <span aria-hidden>+</span> New Problem
             </button>
@@ -68,7 +68,7 @@ export default function ProblemsPage() {
           <div className="overflow-x-auto rounded-lg border border-oj-border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-oj-border bg-oj-surface/50">
+                <tr className="border-b border-oj-border bg-oj-surface2">
                   <th className="text-left px-4 py-2.5 text-oj-fg-muted font-medium">Title</th>
                   <th className="text-left px-4 py-2.5 text-oj-fg-muted font-medium">Difficulty</th>
                   <th className="text-left px-4 py-2.5 text-oj-fg-muted font-medium font-mono">Time</th>
@@ -78,11 +78,10 @@ export default function ProblemsPage() {
                 </tr>
               </thead>
               <tbody>
-                {problems.map((p, i) => (
+                {problems.map((p) => (
                   <tr
                     key={p.problem_id}
-                    className={`border-b border-oj-border last:border-0 hover:bg-oj-surface/40 transition-colors
-                                ${i % 2 === 0 ? '' : 'bg-oj-surface/20'}`}
+                    className="border-b border-oj-border last:border-0 hover:bg-red-50/40 transition-colors"
                   >
                     <td className="px-4 py-3">
                       <Link
@@ -114,7 +113,7 @@ export default function ProblemsPage() {
                           </Link>
                           <button
                             onClick={() => handleDelete(p.problem_id)}
-                            className="text-xs text-red-400/70 hover:text-red-400 transition-colors"
+                            className="text-xs text-red-600/70 hover:text-red-700 transition-colors"
                           >
                             Delete
                           </button>

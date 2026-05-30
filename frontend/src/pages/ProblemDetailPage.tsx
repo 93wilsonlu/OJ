@@ -173,14 +173,14 @@ function ProblemForm({
         </div>
       </fieldset>
 
-      {error && <p className="text-red-400 text-sm font-mono">{error}</p>}
+      {error && <p className="text-red-700 text-sm font-mono">{error}</p>}
 
       <div className="flex justify-end">
         <button
           onClick={handleSave}
           disabled={saving || !dirty}
-          className="px-4 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
-                     hover:bg-oj-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-white
+                     hover:bg-oj-accent-dim disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {saving
             ? (isCreate ? 'Creating…' : 'Saving…')
@@ -342,7 +342,7 @@ function TestCaseForm({
         </label>
       </div>
 
-      {error && <p className="text-red-400 text-xs font-mono">{error}</p>}
+      {error && <p className="text-red-700 text-xs font-mono">{error}</p>}
 
       <div className="flex justify-end gap-2 pt-1">
         {onCancel && (
@@ -358,8 +358,8 @@ function TestCaseForm({
         <button
           type="submit"
           disabled={saving}
-          className="px-3 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
-                     hover:bg-oj-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-3 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-white
+                     hover:bg-oj-accent-dim disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? (isEdit ? 'Saving…' : 'Uploading…') : (isEdit ? 'Save changes' : 'Upload')}
         </button>
@@ -460,7 +460,7 @@ function TestCaseList({
       <div className="mt-3 rounded-lg border border-oj-border overflow-hidden">
         <table className="w-full text-xs font-mono">
           <thead>
-            <tr className="border-b border-oj-border bg-oj-surface/50">
+            <tr className="border-b border-oj-border bg-oj-surface2">
               <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">#</th>
               <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Name</th>
               <th className="text-left px-3 py-2 text-oj-fg-muted font-medium">Hidden</th>
@@ -472,13 +472,13 @@ function TestCaseList({
           </thead>
           <tbody>
             {testcases.map((tc, i) => (
-              <tr key={tc.testcase_id} className="border-b border-oj-border last:border-0 hover:bg-oj-surface/40">
+              <tr key={tc.testcase_id} className="border-b border-oj-border last:border-0 hover:bg-red-50/40">
                 <td className="px-3 py-2 text-oj-fg-muted">{i + 1}</td>
                 <td className="px-3 py-2 text-oj-fg max-w-[12rem] truncate">
                   {tc.name ?? <span className="text-oj-fg-muted">Testcase #{i + 1}</span>}
                 </td>
                 <td className="px-3 py-2">
-                  <span className={tc.is_hidden ? 'text-amber-300' : 'text-oj-fg-muted'}>
+                  <span className={tc.is_hidden ? 'text-amber-600' : 'text-oj-fg-muted'}>
                     {tc.is_hidden ? 'hidden' : 'visible'}
                   </span>
                 </td>
@@ -503,7 +503,7 @@ function TestCaseList({
                     </button>
                     <button
                       onClick={() => handleDelete(tc)}
-                      className="text-red-400/70 hover:text-red-400 transition-colors"
+                      className="text-red-600/70 hover:text-red-700 transition-colors"
                     >
                       Delete
                     </button>
@@ -587,7 +587,7 @@ export default function ProblemDetailPage() {
   }
 
   if (loading) return <div className="p-8 text-oj-fg-muted text-sm font-mono">Loading…</div>
-  if (error) return <div className="p-8 text-red-400 text-sm font-mono">Error: {error}</div>
+  if (error) return <div className="p-8 text-red-700 text-sm font-mono">Error: {error}</div>
   if (!token) return null
 
   // ── Create mode ──
@@ -630,7 +630,7 @@ export default function ProblemDetailPage() {
         {canWrite && (
           <button
             onClick={handleDelete}
-            className="text-sm text-red-400/70 hover:text-red-400 transition-colors"
+            className="text-sm text-red-600/70 hover:text-red-700 transition-colors"
           >
             Delete problem
           </button>
@@ -666,7 +666,7 @@ export default function ProblemDetailPage() {
             <button
               onClick={() => setShowAddTC(true)}
               className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium
-                         bg-oj-accent text-oj-bg hover:bg-oj-accent/90 transition-colors"
+                         bg-oj-accent text-white hover:bg-oj-accent-dim transition-colors"
             >
               <span aria-hidden>+</span> Add Test Case
             </button>
