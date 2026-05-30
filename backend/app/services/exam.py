@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.judge_result import JudgeResult
 from app.models.problem import Problem
+from app.models.submission import Submission
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
 
 
@@ -97,6 +99,27 @@ async def update_exam(db: AsyncSession, exam: Exam, data: ExamUpdate) -> Exam:
 
 
 async def delete_exam(db: AsyncSession, exam: Exam) -> None:
+    eid = exam.exam_id
+
+    # Dependent rows have no DB-level cascade — clean up in FK order.
+    result = await db.execute(select(Submission).where(Submission.exam_id == eid))
+    submissions = list(result.scalars())
+    if submissions:
+        sub_ids = [s.submission_id for s in submissions]
+        result = await db.execute(
+            select(JudgeResult).where(JudgeResult.submission_id.in_(sub_ids))
+        )
+        for jr in result.scalars():
+            await db.delete(jr)
+        for sub in submissions:
+            await db.delete(sub)
+
+    result = await db.execute(
+        select(ExamAssignment).where(ExamAssignment.exam_id == eid)
+    )
+    for assignment in result.scalars():
+        await db.delete(assignment)
+
     await db.delete(exam)
     await db.commit()
 
