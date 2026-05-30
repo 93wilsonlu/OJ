@@ -205,6 +205,39 @@ async def test_delete_exam_deletes_dependents_in_fk_order():
     db.commit.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_delete_exam_cleans_up_dependent_rows():
+    """I1: exams with submissions/assignments must not 500 — deps have no DB
+    cascade, so they're deleted in FK order (judge_results → submissions →
+    assignments → exam)."""
+    exam = _make_exam()
+    sub = MagicMock()
+    sub.submission_id = uuid.uuid4()
+    judge_result = MagicMock()
+    assignment = _make_assignment(exam.exam_id, uuid.uuid4(), uuid.uuid4())
+
+    def _result(rows):
+        r = MagicMock()
+        r.scalars.return_value = iter(rows)
+        return r
+
+    db = _mock_db()
+    db.execute = AsyncMock(side_effect=[
+        _result([sub]),           # submissions for this exam
+        _result([judge_result]),  # judge results for those submissions
+        _result([assignment]),    # assignments for this exam
+    ])
+
+    await delete_exam(db, exam)
+
+    deleted = [call.args[0] for call in db.delete.await_args_list]
+    assert judge_result in deleted
+    assert sub in deleted
+    assert assignment in deleted
+    assert exam in deleted
+    db.commit.assert_awaited_once()
+
+
 # ── service: assignment ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
