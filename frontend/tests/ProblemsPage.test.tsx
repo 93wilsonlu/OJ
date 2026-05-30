@@ -6,7 +6,7 @@ import * as problemsApi from '../src/api/problems'
 import * as useAuthModule from '../src/hooks/useAuth'
 import ProblemsPage from '../src/pages/ProblemsPage'
 
-const mockAuth = (role = 'problem_admin') => {
+const mockAuth = (role: 'admin' | 'problem_admin' | 'interviewer' | 'candidate' = 'problem_admin') => {
   vi.spyOn(useAuthModule, 'useAuth').mockReturnValue({
     user: { user_id: 'user-1', name: 'User', email: 'user@example.com', role },
     accessToken: 'token',
@@ -40,6 +40,12 @@ beforeEach(() => {
       time_limit: 1000,
       memory_limit: 256,
       allowed_langs: ['python3'],
+      input_format: null,
+      output_format: null,
+      sample_input: null,
+      sample_output: null,
+      created_by: null,
+      created_at: '2026-05-31T00:00:00Z',
     },
     {
       problem_id: 'p2',
@@ -49,6 +55,12 @@ beforeEach(() => {
       time_limit: 2000,
       memory_limit: 512,
       allowed_langs: ['cpp17'],
+      input_format: null,
+      output_format: null,
+      sample_input: null,
+      sample_output: null,
+      created_by: null,
+      created_at: '2026-05-31T00:00:00Z',
     },
   ])
 })

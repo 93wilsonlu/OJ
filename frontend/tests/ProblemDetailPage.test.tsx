@@ -41,6 +41,8 @@ beforeEach(() => {
     time_limit: 1000,
     memory_limit: 256,
     allowed_langs: ['python3', 'cpp17'],
+    created_by: null,
+    created_at: '2026-05-31T00:00:00Z',
   })
   vi.spyOn(problemsApi, 'apiListTestCases').mockResolvedValue([])
 })

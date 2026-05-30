@@ -34,7 +34,21 @@ beforeEach(() => {
   vi.restoreAllMocks()
   mockAuth()
   vi.spyOn(problemsApi, 'apiListProblems').mockResolvedValue([
-    { problem_id: 'p1', title: 'Problem 1', difficulty: 'easy', description: '' },
+    {
+      problem_id: 'p1',
+      title: 'Problem 1',
+      difficulty: 'easy',
+      description: '',
+      input_format: null,
+      output_format: null,
+      sample_input: null,
+      sample_output: null,
+      time_limit: 1000,
+      memory_limit: 256,
+      allowed_langs: ['python3'],
+      created_by: null,
+      created_at: '2026-05-31T00:00:00Z',
+    },
   ])
   vi.spyOn(adminApi, 'apiListAdminUsers').mockResolvedValue({
     items: [
@@ -73,6 +87,8 @@ describe('ExamManagePage', () => {
       start_time: '2026-06-01T10:00:00Z',
       end_time: '2026-06-01T12:00:00Z',
       show_score: false,
+      created_by: null,
+      created_at: '2026-05-31T00:00:00Z',
     })
     vi.spyOn(examsApi, 'apiListAssignments').mockResolvedValue([])
 
@@ -91,6 +107,8 @@ describe('ExamManagePage', () => {
       start_time: '2026-06-01T10:00:00Z',
       end_time: '2026-06-01T12:00:00Z',
       show_score: false,
+      created_by: null,
+      created_at: '2026-05-31T00:00:00Z',
     })
     vi.spyOn(examsApi, 'apiListAssignments').mockResolvedValue([])
 
