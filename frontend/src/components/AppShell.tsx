@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth'
 import type { UserOut } from '../types/auth'
 
 interface AppShellProps {
-  children: ReactNode
+  readonly children: ReactNode
 }
 
 type NavItem = {
