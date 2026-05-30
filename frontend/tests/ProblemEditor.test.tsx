@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, vi } from 'vitest'
-import * as problemsApi from '../src/api/problems'
+import * as examsApi from '../src/api/exams'
 import * as submissionsApi from '../src/api/submissions'
 import * as useAuthModule from '../src/hooks/useAuth'
 import { useSubmissionPoller } from '../src/hooks/useSubmissionPoller'
 import ProblemEditor from '../src/pages/ProblemEditor'
-import type { Problem } from '../src/types/problem'
+import type { ExamProblem } from '../src/types/exam'
 
 vi.mock('@monaco-editor/react', () => ({
   default: ({ value, onChange, language }: {
@@ -27,7 +27,8 @@ vi.mock('../src/hooks/useSubmissionPoller', () => ({
   useSubmissionPoller: vi.fn(() => ({ data: null, error: null })),
 }))
 
-const problem: Problem = {
+const problem: ExamProblem = {
+  assignment_id: 'assignment-1',
   problem_id: 'problem-1',
   title: 'Two Sum',
   description: 'Find two numbers with the requested sum.',
@@ -39,8 +40,6 @@ const problem: Problem = {
   time_limit: 1000,
   memory_limit: 128,
   allowed_langs: ['cpp17'],
-  created_by: null,
-  created_at: new Date().toISOString(),
 }
 
 function mockAuth() {
@@ -72,7 +71,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
   mockAuth()
-  vi.spyOn(problemsApi, 'apiGetProblem').mockResolvedValue(problem)
+  vi.spyOn(examsApi, 'apiListExamProblems').mockResolvedValue([problem])
   vi.spyOn(submissionsApi, 'apiCreateSubmission').mockResolvedValue({
     submission_id: 'submission-1',
     exam_id: 'exam-1',

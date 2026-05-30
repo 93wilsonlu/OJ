@@ -2,12 +2,12 @@ import Editor from '@monaco-editor/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/errors'
-import { apiGetProblem } from '../api/problems'
+import { apiListExamProblems } from '../api/exams'
 import { apiCreateSubmission } from '../api/submissions'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
-import type { Problem } from '../types/problem'
+import type { ExamProblem } from '../types/exam'
 import type { SubmissionStatus } from '../types/submission'
 
 const LANGUAGE_OPTIONS: Record<string, { label: string; monaco: string; starter: string }> = {
@@ -62,7 +62,7 @@ function loadReusableSubmission(submissionId: string | null) {
   }
 }
 
-function ProblemStatement({ problem }: { problem: Problem }) {
+function ProblemStatement({ problem }: { problem: ExamProblem }) {
   return (
     <article className="h-full overflow-y-auto px-5 py-4">
       <div className="mb-5">
@@ -199,7 +199,7 @@ export default function ProblemEditor() {
   const [searchParams] = useSearchParams()
   const { getAccessToken } = useAuth()
 
-  const [problem, setProblem] = useState<Problem | null>(null)
+  const [problem, setProblem] = useState<ExamProblem | null>(null)
   const [problemError, setProblemError] = useState<string | null>(null)
   const [language, setLanguage] = useState('python3')
   const [code, setCode] = useState(() => loadDraft(examId, problemId, 'python3'))
@@ -219,7 +219,8 @@ export default function ProblemEditor() {
   }, [problem])
 
   useEffect(() => {
-    if (!problemId) return
+    if (!examId || !problemId) return
+    const currentExamId = examId
     const currentProblemId = problemId
     let cancelled = false
 
@@ -228,8 +229,12 @@ export default function ProblemEditor() {
       try {
         const token = await getAccessToken()
         if (!token) throw new Error('Session expired. Please sign in again.')
-        const data = await apiGetProblem(token, currentProblemId)
-        if (!cancelled) setProblem(data)
+        // Candidates read problems via the exam-scoped endpoint, not the
+        // staff-only problem bank (/problems/{id}).
+        const problems = await apiListExamProblems(token, currentExamId)
+        const found = problems.find((p) => p.problem_id === currentProblemId)
+        if (!found) throw new Error('Problem not found in this exam.')
+        if (!cancelled) setProblem(found)
       } catch (e) {
         if (!cancelled) setProblemError(getErrorMessage(e, 'Failed to load problem'))
       }
@@ -239,7 +244,7 @@ export default function ProblemEditor() {
     return () => {
       cancelled = true
     }
-  }, [problemId, getAccessToken])
+  }, [examId, problemId, getAccessToken])
 
   useEffect(() => {
     const reuseId = searchParams.get('fromSubmission')
