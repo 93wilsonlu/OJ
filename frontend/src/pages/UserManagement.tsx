@@ -1,26 +1,11 @@
 import { useEffect, useState } from 'react'
-import {
-  apiCreateAdminUser,
-  apiDeleteAdminUser,
-  apiListAdminUsers,
-  apiUpdateAdminUser,
-} from '../api/admin'
+import { useNavigate } from 'react-router-dom'
+import { apiDeleteAdminUser, apiListAdminUsers } from '../api/admin'
 import { useAuth } from '../hooks/useAuth'
-import type {
-  AdminUser,
-  AdminUserCreate,
-  AdminUserRole,
-} from '../types/admin'
+import type { AdminUser, AdminUserRole } from '../types/admin'
 
 const ROLES: AdminUserRole[] = ['admin', 'interviewer', 'problem_admin', 'candidate']
 const PAGE_SIZE = 10
-
-const EMPTY_CREATE_FORM: AdminUserCreate = {
-  name: '',
-  email: '',
-  password: '',
-  role: 'candidate',
-}
 
 const inputCls = `w-full bg-oj-surface2 border border-oj-border rounded px-3 py-1.5
                   text-sm text-oj-fg focus:outline-none focus:ring-1 focus:ring-oj-accent`
@@ -33,145 +18,37 @@ function formatDate(iso: string) {
   })
 }
 
-function CreateUserModal({
-  open,
-  saving,
-  error,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean
-  saving: boolean
-  error: string | null
-  onClose: () => void
-  onSubmit: (payload: AdminUserCreate) => Promise<void>
-}) {
-  const [form, setForm] = useState<AdminUserCreate>(EMPTY_CREATE_FORM)
-
-  useEffect(() => {
-    if (open) setForm(EMPTY_CREATE_FORM)
-  }, [open])
-
-  if (!open) return null
-
+function SearchIcon() {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-md rounded-xl border border-oj-border bg-oj-surface p-5 shadow-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-oj-fg">Create user</h2>
-          <button onClick={onClose} className="text-oj-fg-muted hover:text-oj-fg">Close</button>
-        </div>
-
-        <div className="space-y-3">
-          <label className="block">
-            <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Name</span>
-            <input
-              value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              className={inputCls}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Email</span>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-              className={inputCls}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Password</span>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-              className={inputCls}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Role</span>
-            <select
-              value={form.role}
-              onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as AdminUserRole }))}
-              className={inputCls}
-            >
-              {ROLES.map((role) => (
-                <option key={role} value={role}>{role}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {error && <p className="text-red-400 text-sm font-mono mt-3">{error}</p>}
-
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 rounded-md text-sm text-oj-fg-muted hover:bg-oj-surface2"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onSubmit(form)}
-            disabled={saving}
-            className="px-4 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
-                       hover:bg-oj-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? 'Creating...' : 'Create user'}
-          </button>
-        </div>
-      </div>
-    </div>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="2"
+         strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
   )
 }
 
 function UserRow({
   user,
   currentUserId,
-  saving,
-  onSave,
-  onDeactivate,
+  deleting,
+  onEdit,
+  onDelete,
 }: {
   user: AdminUser
   currentUserId: string | undefined
-  saving: boolean
-  onSave: (userId: string, payload: { name: string; role: AdminUserRole }) => Promise<void>
-  onDeactivate: (user: AdminUser) => Promise<void>
+  deleting: boolean
+  onEdit: (user: AdminUser) => void
+  onDelete: (user: AdminUser) => void
 }) {
-  const [name, setName] = useState(user.name)
-  const [role, setRole] = useState<AdminUserRole>(user.role)
-  const dirty = name !== user.name || role !== user.role
   const isSelf = user.user_id === currentUserId
-
-  useEffect(() => {
-    setName(user.name)
-    setRole(user.role)
-  }, [user.name, user.role])
 
   return (
     <tr className="border-b border-oj-border last:border-0">
-      <td className="px-4 py-3">
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          className={`${inputCls} min-w-[180px]`}
-          disabled={!user.is_active}
-        />
-      </td>
+      <td className="px-4 py-3 text-oj-fg">{user.name}</td>
       <td className="px-4 py-3 text-oj-fg-muted">{user.email}</td>
-      <td className="px-4 py-3">
-        <select
-          value={role}
-          onChange={(event) => setRole(event.target.value as AdminUserRole)}
-          className={inputCls}
-          disabled={!user.is_active || isSelf}
-        >
-          {ROLES.map((item) => (
-            <option key={item} value={item}>{item}</option>
-          ))}
-        </select>
-      </td>
+      <td className="px-4 py-3 text-oj-fg-muted font-mono text-xs">{user.role}</td>
       <td className="px-4 py-3">
         <span className={user.is_active ? 'text-green-400' : 'text-slate-500'}>
           {user.is_active ? 'Active' : 'Inactive'}
@@ -181,20 +58,18 @@ function UserRow({
       <td className="px-4 py-3">
         <div className="flex justify-end gap-2">
           <button
-            onClick={() => onSave(user.user_id, { name: name.trim(), role })}
-            disabled={!dirty || saving || !user.is_active}
-            className="px-3 py-1.5 rounded-md text-xs text-oj-accent hover:bg-oj-accent/10
-                       disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => onEdit(user)}
+            className="px-3 py-1.5 rounded-md text-xs text-oj-accent hover:bg-oj-accent/10"
           >
-            Save
+            Edit
           </button>
           <button
-            onClick={() => onDeactivate(user)}
-            disabled={!user.is_active || isSelf || saving}
+            onClick={() => onDelete(user)}
+            disabled={isSelf || deleting}
             className="px-3 py-1.5 rounded-md text-xs text-red-400 hover:bg-red-400/10
                        disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Deactivate
+            {deleting ? 'Deleting…' : 'Delete'}
           </button>
         </div>
       </td>
@@ -204,18 +79,17 @@ function UserRow({
 
 export default function UserManagement() {
   const { user: currentUser, getAccessToken } = useAuth()
+  const navigate = useNavigate()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
+  const [searchText, setSearchText] = useState('')
   const [query, setQuery] = useState('')
   const [role, setRole] = useState<AdminUserRole | ''>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [savingId, setSavingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -262,53 +136,31 @@ export default function UserManagement() {
     setTotalPages(data.total_pages)
   }
 
-  async function handleCreate(payload: AdminUserCreate) {
-    const freshToken = await getAccessToken()
-    if (!freshToken) return
-    setCreating(true)
-    setCreateError(null)
-    try {
-      await apiCreateAdminUser(freshToken, payload)
-      setCreateOpen(false)
-      setPage(1)
-      await reload(1)
-    } catch (e) {
-      setCreateError(e instanceof Error ? e.message : 'Create failed')
-    } finally {
-      setCreating(false)
-    }
+  function handleSearch(event: React.FormEvent) {
+    event.preventDefault()
+    setQuery(searchText.trim())
+    setPage(1)
   }
 
-  async function handleSave(userId: string, payload: { name: string; role: AdminUserRole }) {
+  async function handleDelete(target: AdminUser) {
     const freshToken = await getAccessToken()
     if (!freshToken) return
-    setSavingId(userId)
-    setError(null)
-    try {
-      const updated = await apiUpdateAdminUser(freshToken, userId, payload)
-      setUsers((items) => items.map((item) => item.user_id === userId ? updated : item))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed')
-    } finally {
-      setSavingId(null)
-    }
-  }
-
-  async function handleDeactivate(target: AdminUser) {
-    const freshToken = await getAccessToken()
-    if (!freshToken) return
-    if (!confirm(`Deactivate ${target.name}? They will no longer be able to sign in.`)) return
-    setSavingId(target.user_id)
+    if (!confirm(`Delete ${target.name}? This permanently removes the account.`)) return
+    setDeletingId(target.user_id)
     setError(null)
     try {
       await apiDeleteAdminUser(freshToken, target.user_id)
-      setUsers((items) => items.map((item) => (
-        item.user_id === target.user_id ? { ...item, is_active: false } : item
-      )))
+      // If the deleted row was the last one on a non-first page, step back a page.
+      const targetPage = users.length === 1 && page > 1 ? page - 1 : page
+      if (targetPage !== page) {
+        setPage(targetPage)
+      } else {
+        await reload(targetPage)
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Deactivate failed')
+      setError(e instanceof Error ? e.message : 'Delete failed')
     } finally {
-      setSavingId(null)
+      setDeletingId(null)
     }
   }
 
@@ -320,7 +172,7 @@ export default function UserManagement() {
           <p className="text-sm text-oj-fg-muted mt-1">{total} users</p>
         </div>
         <button
-          onClick={() => setCreateOpen(true)}
+          onClick={() => navigate('/admin/users/new')}
           className="px-4 py-2 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
                      hover:bg-oj-accent/90"
         >
@@ -329,12 +181,23 @@ export default function UserManagement() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_220px] mb-4">
-        <input
-          value={query}
-          onChange={(event) => { setQuery(event.target.value); setPage(1) }}
-          placeholder="Search name or email"
-          className={inputCls}
-        />
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <input
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            placeholder="Search name or email"
+            className={inputCls}
+          />
+          <button
+            type="submit"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium
+                       bg-oj-surface2 border border-oj-border text-oj-fg hover:bg-oj-surface
+                       whitespace-nowrap"
+          >
+            <SearchIcon />
+            Search
+          </button>
+        </form>
         <select
           value={role}
           onChange={(event) => { setRole(event.target.value as AdminUserRole | ''); setPage(1) }}
@@ -370,9 +233,9 @@ export default function UserManagement() {
                   key={item.user_id}
                   user={item}
                   currentUserId={currentUser?.user_id}
-                  saving={savingId === item.user_id}
-                  onSave={handleSave}
-                  onDeactivate={handleDeactivate}
+                  deleting={deletingId === item.user_id}
+                  onEdit={(user) => navigate(`/admin/users/${user.user_id}/edit`)}
+                  onDelete={handleDelete}
                 />
               ))}
             </tbody>
@@ -404,14 +267,6 @@ export default function UserManagement() {
           </button>
         </div>
       </div>
-
-      <CreateUserModal
-        open={createOpen}
-        saving={creating}
-        error={createError}
-        onClose={() => setCreateOpen(false)}
-        onSubmit={handleCreate}
-      />
     </div>
   )
 }

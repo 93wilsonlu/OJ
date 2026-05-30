@@ -102,7 +102,9 @@ async def create_submission(
     try:
         queue_service.enqueue_submission(submission_id)
     except Exception:
-        pass  # queue unavailable; submission created, can be retried
+        submission.status = "failed"
+        db.add(submission)
+        await db.commit()
 
     return submission
 

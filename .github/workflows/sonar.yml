@@ -1,0 +1,54 @@
+name: SonarCloud
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+
+jobs:
+  sonarcloud:
+    name: SonarCloud Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup UV (Python)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      # Run frontend tests to generate coverage
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+        
+      - name: Run frontend tests and generate coverage
+        run: npm run coverage
+        working-directory: frontend
+
+      # Run backend tests to generate coverage
+      - name: Install backend dependencies
+        run: uv sync --frozen --extra dev
+        working-directory: backend
+        
+      - name: Run backend tests and generate coverage
+        run: uv run pytest --cov=app --cov-report=xml
+        working-directory: backend
+
+      # SonarCloud Scanner
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
