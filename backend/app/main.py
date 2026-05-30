@@ -1,6 +1,7 @@
 import warnings
 from contextlib import asynccontextmanager
 
+import anyio
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,7 +27,7 @@ async def lifespan(app: FastAPI):
     # MinIO bucket
     try:
         from app.services.storage import ensure_bucket
-        ensure_bucket()
+        await anyio.to_thread.run_sync(ensure_bucket)
         log.info("minio.bucket.ready", bucket=settings.MINIO_BUCKET)
     except Exception as exc:
         log.warning("minio.bucket.unavailable", error=str(exc))

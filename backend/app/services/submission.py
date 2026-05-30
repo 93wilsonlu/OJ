@@ -2,6 +2,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+import anyio
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,7 +84,9 @@ async def create_submission(
     submission_id = uuid.uuid4()
     ext = _LANG_EXT.get(data.language, "txt")
     code_key = f"submissions/{submission_id}/code.{ext}"
-    storage.put_object(code_key, data.code.encode("utf-8"), "text/plain")
+    await anyio.to_thread.run_sync(
+        storage.put_object, code_key, data.code.encode("utf-8"), "text/plain"
+    )
 
     submission = Submission(
         submission_id=submission_id,
@@ -129,9 +132,11 @@ async def get_submission(
     return submission, judge_result
 
 
-def get_submission_source_code(submission: Submission) -> str | None:
+async def get_submission_source_code(submission: Submission) -> str | None:
     try:
-        return storage.get_object_text(submission.code_storage_key)
+        return await anyio.to_thread.run_sync(
+            storage.get_object_text, submission.code_storage_key
+        )
     except Exception:
         return None
 

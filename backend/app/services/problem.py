@@ -1,5 +1,6 @@
 import uuid
 
+import anyio
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,7 +71,7 @@ async def delete_problem(db: AsyncSession, problem: Problem) -> None:
 
     result = await db.execute(select(TestCase).where(TestCase.problem_id == pid))
     for tc in result.scalars():
-        _remove_tc_objects(tc)
+        await _remove_tc_objects(tc)
         await db.delete(tc)
 
     await db.delete(problem)
@@ -117,8 +118,8 @@ async def create_test_case(
     input_key = f"test-cases/{problem_id}/{tc_id}/input"
     expected_key = f"test-cases/{problem_id}/{tc_id}/expected"
 
-    storage.put_object(input_key, input_bytes)
-    storage.put_object(expected_key, expected_bytes)
+    await anyio.to_thread.run_sync(storage.put_object, input_key, input_bytes)
+    await anyio.to_thread.run_sync(storage.put_object, expected_key, expected_bytes)
 
     tc = TestCase(
         testcase_id=tc_id,
@@ -154,23 +155,23 @@ async def update_test_case(
     tc.time_limit_override = time_limit_override
     tc.memory_limit_override = memory_limit_override
     if input_bytes is not None:
-        storage.put_object(tc.input_data_key, input_bytes)
+        await anyio.to_thread.run_sync(storage.put_object, tc.input_data_key, input_bytes)
     if expected_bytes is not None:
-        storage.put_object(tc.expected_output_key, expected_bytes)
+        await anyio.to_thread.run_sync(storage.put_object, tc.expected_output_key, expected_bytes)
     await db.commit()
     await db.refresh(tc)
     return tc
 
 
 async def delete_test_case(db: AsyncSession, tc: TestCase) -> None:
-    _remove_tc_objects(tc)
+    await _remove_tc_objects(tc)
     await db.delete(tc)
     await db.commit()
 
 
-def _remove_tc_objects(tc: TestCase) -> None:
+async def _remove_tc_objects(tc: TestCase) -> None:
     for key in (tc.input_data_key, tc.expected_output_key):
         try:
-            storage.delete_object(key)
+            await anyio.to_thread.run_sync(storage.delete_object, key)
         except Exception:
             pass  # best-effort; DB record deleted regardless

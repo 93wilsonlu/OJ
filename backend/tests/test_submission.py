@@ -242,26 +242,26 @@ async def test_get_submission_candidate_cannot_see_others():
 # ── router integration ─────────────────────────────────────────────────────────
 
 @patch("app.services.submission.storage.get_object_text")
-def test_get_submission_source_code_returns_stored_code(mock_get_text):
+async def test_get_submission_source_code_returns_stored_code(mock_get_text):
     candidate_id = uuid.uuid4()
     exam_id = uuid.uuid4()
     problem_id = uuid.uuid4()
     submission = _make_submission(candidate_id, exam_id, problem_id)
     mock_get_text.return_value = "print('hello')\n"
 
-    assert get_submission_source_code(submission) == "print('hello')\n"
+    assert await get_submission_source_code(submission) == "print('hello')\n"
     mock_get_text.assert_called_once_with(submission.code_storage_key)
 
 
 @patch("app.services.submission.storage.get_object_text")
-def test_get_submission_source_code_returns_none_when_storage_fails(mock_get_text):
+async def test_get_submission_source_code_returns_none_when_storage_fails(mock_get_text):
     candidate_id = uuid.uuid4()
     exam_id = uuid.uuid4()
     problem_id = uuid.uuid4()
     submission = _make_submission(candidate_id, exam_id, problem_id)
     mock_get_text.side_effect = RuntimeError("storage unavailable")
 
-    assert get_submission_source_code(submission) is None
+    assert await get_submission_source_code(submission) is None
 
 
 def _client_for(user: User):
