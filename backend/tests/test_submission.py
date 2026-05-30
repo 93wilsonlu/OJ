@@ -264,6 +264,38 @@ async def test_get_submission_source_code_returns_none_when_storage_fails(mock_g
     assert await get_submission_source_code(submission) is None
 
 
+# ── C2: error_message gated like score ──────────────────────────────────────────
+
+def _make_judge_result(error_message: str = "boom: internal trace"):
+    jr = MagicMock()
+    jr.result_id = uuid.uuid4()
+    jr.submission_id = uuid.uuid4()
+    jr.verdict = "System Error"
+    jr.score = 0
+    jr.passed_count = 0
+    jr.total_count = 3
+    jr.execution_time = 0
+    jr.memory_usage = 0
+    jr.error_message = error_message
+    jr.judged_at = datetime.now(UTC)
+    return jr
+
+
+def test_judge_result_hides_error_message_when_score_hidden():
+    from app.routers.submission import _judge_result_out
+
+    out = _judge_result_out(_make_judge_result(), hide_score=True)
+    assert out.score is None
+    assert out.error_message is None
+
+
+def test_judge_result_shows_error_message_when_score_visible():
+    from app.routers.submission import _judge_result_out
+
+    out = _judge_result_out(_make_judge_result(), hide_score=False)
+    assert out.error_message == "boom: internal trace"
+
+
 def _client_for(user: User):
     async def override_db():
         yield AsyncMock()

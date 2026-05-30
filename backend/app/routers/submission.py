@@ -36,7 +36,7 @@ def _judge_result_out(
         total_count=judge_result.total_count,
         execution_time=judge_result.execution_time,
         memory_usage=judge_result.memory_usage,
-        error_message=judge_result.error_message,
+        error_message=judge_result.error_message if not hide_score else None,
         judged_at=judge_result.judged_at,
     )
 

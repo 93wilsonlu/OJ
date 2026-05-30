@@ -15,6 +15,13 @@ from app.services.sandbox import init_box, cleanup_box, compile_code, run_test_c
 
 logger = logging.getLogger(__name__)
 
+# Shown to users for any System Error. Real cause is logged server-side only,
+# never surfaced to candidates (C2).
+SYSTEM_ERROR_MESSAGE = (
+    "An internal error occurred while judging this submission. "
+    "Please contact the administrator."
+)
+
 def judge_submission(submission_id_str: str) -> None:
     asyncio.run(_judge_submission_async(uuid.UUID(submission_id_str)))
 
@@ -67,7 +74,7 @@ async def _judge_submission_async(submission_id: uuid.UUID) -> None:
                     total_count=len(test_cases) if 'test_cases' in locals() else 0,
                     execution_time=0,
                     memory_usage=0,
-                    error_message=str(e)
+                    error_message=SYSTEM_ERROR_MESSAGE
                 )
                 db.add(jr)
                 
@@ -100,7 +107,8 @@ async def _run_judge(lang: str, code: str, problem: Problem, test_cases: list[Te
                 input_data = storage.get_object_text(tc.input_data_key)
                 expected_output = storage.get_object_text(tc.expected_output_key)
             except Exception as e:
-                return "System Error", 0, 0, 0, f"Failed to load testcase: {e}", 0, len(test_cases)
+                logger.error(f"Failed to load testcase for problem {problem.problem_id}: {e}")
+                return "System Error", 0, 0, 0, SYSTEM_ERROR_MESSAGE, 0, len(test_cases)
                 
             time_limit = tc.time_limit_override if tc.time_limit_override is not None else problem.time_limit
             mem_limit = tc.memory_limit_override if tc.memory_limit_override is not None else problem.memory_limit
