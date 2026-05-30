@@ -61,6 +61,12 @@ def _require_user_creator(user: User, requested_role: str) -> None:
         return
     raise HTTPException(status_code=403, detail="Insufficient permissions")
 
+def _require_user_viewer(user: User, requested_role: str | None) -> None:
+    if user.role == "admin":
+        return
+    if user.role == "interviewer" and requested_role == "candidate":
+        return
+    raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 async def create_user(
     db: AsyncSession,
@@ -95,7 +101,7 @@ async def list_users(
     page: int,
     page_size: int,
 ) -> tuple[list[User], int, int]:
-    _require_admin(current_user)
+    _require_user_viewer(current_user, role)
 
     filters = []
     if role:
