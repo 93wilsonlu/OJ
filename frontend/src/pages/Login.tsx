@@ -42,10 +42,10 @@ export default function Login() {
         <section className="flex items-center px-6 py-12 sm:px-10 lg:px-16">
           <div className="max-w-2xl">
             <img src="/tsmc-logo.webp" alt="TSMC" className="mb-10 h-12 w-auto" />
-            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-oj-accent">
+            <p className="mb-3 text-sm font-semibold uppercase text-oj-accent">
               Engineering Assessment Platform
             </p>
-            <h1 className="text-4xl font-semibold tracking-normal text-oj-fg sm:text-5xl">
+            <h1 className="text-4xl font-semibold text-oj-fg">
               Online Judge
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-oj-fg-muted">
@@ -54,15 +54,15 @@ export default function Login() {
 
             <div className="mt-10 grid max-w-xl gap-3 sm:grid-cols-3">
               <div className="border-l-2 border-oj-accent bg-white/70 px-4 py-3 shadow-sm">
-                <div className="text-xs font-medium uppercase tracking-wide text-oj-fg-muted">Access</div>
+                <div className="text-xs font-medium uppercase text-oj-fg-muted">Access</div>
                 <div className="mt-1 text-sm font-semibold text-oj-fg">Role based</div>
               </div>
               <div className="border-l-2 border-oj-accent bg-white/70 px-4 py-3 shadow-sm">
-                <div className="text-xs font-medium uppercase tracking-wide text-oj-fg-muted">Judge</div>
+                <div className="text-xs font-medium uppercase text-oj-fg-muted">Judge</div>
                 <div className="mt-1 text-sm font-semibold text-oj-fg">Automated</div>
               </div>
               <div className="border-l-2 border-oj-accent bg-white/70 px-4 py-3 shadow-sm">
-                <div className="text-xs font-medium uppercase tracking-wide text-oj-fg-muted">Status</div>
+                <div className="text-xs font-medium uppercase text-oj-fg-muted">Status</div>
                 <div className="mt-1 text-sm font-semibold text-oj-fg">Real time</div>
               </div>
             </div>

@@ -68,7 +68,7 @@ export default function AppShell({ children }: AppShellProps) {
         <div className="flex h-16 items-center gap-5 px-4 sm:px-6">
           <Link to="/" className="flex shrink-0 items-center gap-3" aria-label="TSMC Online Judge home">
             <img src="/tsmc-logo.webp" alt="TSMC" className="h-7 w-auto" />
-            <span className="hidden text-sm font-semibold tracking-wide text-oj-fg lg:inline">
+            <span className="hidden text-sm font-semibold text-oj-fg lg:inline">
               Online Judge
             </span>
           </Link>
