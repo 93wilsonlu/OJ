@@ -154,6 +154,33 @@ async def test_create_submission_after_end_time_raises_403(mock_put, mock_enqueu
 @pytest.mark.asyncio
 @patch("app.services.submission.queue_service.enqueue_submission")
 @patch("app.services.submission.storage.put_object")
+async def test_create_submission_before_start_time_raises_403(mock_put, mock_enqueue):
+    """I2: submissions before the exam start_time are rejected with 403."""
+    exam = _make_exam()
+    exam.start_time = datetime.now(UTC) + timedelta(minutes=10)
+    exam.end_time = datetime.now(UTC) + timedelta(hours=2)
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+
+    data = SubmissionCreate(
+        exam_id=exam.exam_id,
+        problem_id=uuid.uuid4(),
+        language="python3",
+        code="print('hello')",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await create_submission(db, data, uuid.uuid4(), "127.0.0.1")
+
+    assert exc.value.status_code == 403
+    assert "not started" in exc.value.detail.lower()
+    mock_put.assert_not_called()
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("app.services.submission.queue_service.enqueue_submission")
+@patch("app.services.submission.storage.put_object")
 async def test_create_submission_without_assignment_raises_403(mock_put, mock_enqueue):
     exam = _make_exam()
     candidate_id = uuid.uuid4()

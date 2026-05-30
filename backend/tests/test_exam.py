@@ -325,3 +325,11 @@ def test_list_exams_returns_200(mock_list):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["title"] == exam.title
+
+
+# ── schema: end_time must be after start_time (I2) ─────────────────────────────
+
+def test_exam_create_rejects_end_before_start():
+    now = datetime.now(UTC)
+    with pytest.raises(ValueError):
+        ExamCreate(title="T", start_time=now, end_time=now - timedelta(hours=1))

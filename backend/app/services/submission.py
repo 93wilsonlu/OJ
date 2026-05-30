@@ -74,6 +74,11 @@ async def create_submission(
         raise HTTPException(status_code=404, detail="Exam not found")
 
     now = datetime.now(UTC)
+    exam_start = (
+        exam.start_time if exam.start_time.tzinfo else exam.start_time.replace(tzinfo=UTC)
+    )
+    if now < exam_start:
+        raise HTTPException(status_code=403, detail="Exam has not started")
     exam_end = exam.end_time if exam.end_time.tzinfo else exam.end_time.replace(tzinfo=UTC)
     if now > exam_end:
         raise HTTPException(status_code=403, detail="Exam has ended")
