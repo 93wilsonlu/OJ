@@ -3,7 +3,7 @@ import { useAuthContext } from '../contexts/AuthContext'
 
 const ROLE_ROUTES: Record<string, string> = {
   candidate:     '/exams',
-  interviewer:   '/exams',
+  interviewer:   '/interviewer',
   problem_admin: '/problems',
   admin:         '/admin/users',
 }

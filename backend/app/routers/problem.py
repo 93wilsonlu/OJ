@@ -34,6 +34,8 @@ async def _read_capped(file: UploadFile) -> bytes:
 async def list_problems(
     db: AsyncSession = Depends(get_db),
 ):
+    require_role(current_user, *_READ_ROLES) 
+    
     problems = await problem_service.list_problems(db)
     return [ProblemOut.model_validate(p) for p in problems]
 
