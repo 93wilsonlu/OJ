@@ -263,7 +263,8 @@ async def test_get_submission_candidate_cannot_see_others():
 
     with pytest.raises(HTTPException) as exc:
         await get_submission(db, submission.submission_id, candidate_id, "candidate")
-    assert exc.value.status_code == 403
+    # 404 (not 403): cross-candidate access must not leak submission existence.
+    assert exc.value.status_code == 404
 
 
 # ── router integration ─────────────────────────────────────────────────────────

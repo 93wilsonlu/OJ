@@ -14,12 +14,14 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.main import app
 from app.models.exam import Exam
+from app.models.exam_assignment import ExamAssignment
 from app.models.user import User
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
 from app.services.auth import hash_password
 from app.services.exam import (
     create_assignment,
     create_exam,
+    delete_assignment,
     delete_exam,
     get_exam,
     get_exam_for_user,
@@ -218,6 +220,47 @@ async def test_create_assignment_commits_and_returns():
     db.commit.assert_awaited_once()
     assert assignment.exam_id == exam_id
     assert assignment.candidate_id == data.candidate_id
+
+
+@pytest.mark.asyncio
+async def test_delete_assignment_in_exam_commits():
+    exam_id = uuid.uuid4()
+    assignment = ExamAssignment()
+    assignment.assignment_id = uuid.uuid4()
+    assignment.exam_id = exam_id
+
+    db = _mock_db()
+    db.get = AsyncMock(return_value=assignment)
+
+    await delete_assignment(db, exam_id, assignment.assignment_id)
+    db.delete.assert_awaited_once_with(assignment)
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_assignment_wrong_exam_raises_404():
+    """IDOR: an assignment belonging to a different exam must not be deletable
+    through another exam's path, and must 404 (not leak existence)."""
+    assignment = ExamAssignment()
+    assignment.assignment_id = uuid.uuid4()
+    assignment.exam_id = uuid.uuid4()  # belongs to some other exam
+
+    db = _mock_db()
+    db.get = AsyncMock(return_value=assignment)
+
+    with pytest.raises(HTTPException) as exc:
+        await delete_assignment(db, uuid.uuid4(), assignment.assignment_id)
+    assert exc.value.status_code == 404
+    db.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_assignment_missing_raises_404():
+    db = _mock_db()
+    db.get = AsyncMock(return_value=None)
+    with pytest.raises(HTTPException) as exc:
+        await delete_assignment(db, uuid.uuid4(), uuid.uuid4())
+    assert exc.value.status_code == 404
 
 
 # ── router integration ─────────────────────────────────────────────────────────

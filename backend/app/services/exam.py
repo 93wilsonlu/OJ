@@ -186,9 +186,11 @@ async def create_assignment(
     return assignment
 
 
-async def delete_assignment(db: AsyncSession, assignment_id: uuid.UUID) -> None:
+async def delete_assignment(
+    db: AsyncSession, exam_id: uuid.UUID, assignment_id: uuid.UUID
+) -> None:
     assignment = await db.get(ExamAssignment, assignment_id)
-    if assignment is None:
+    if assignment is None or assignment.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="Assignment not found")
     await db.delete(assignment)
     await db.commit()

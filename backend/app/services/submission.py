@@ -128,7 +128,9 @@ async def get_submission(
         raise HTTPException(status_code=404, detail="Submission not found")
 
     if requester_role == "candidate" and submission.candidate_id != requester_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        # 404 (not 403) to avoid leaking submission existence by UUID, matching
+        # the get_exam_for_user convention.
+        raise HTTPException(status_code=404, detail="Submission not found")
 
     result = await db.execute(
         select(JudgeResult).where(JudgeResult.submission_id == submission_id)
