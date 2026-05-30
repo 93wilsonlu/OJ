@@ -69,7 +69,9 @@ async def update_exam(
     db: AsyncSession = Depends(get_db),
 ):
     require_role(current_user, *_WRITE_ROLES)
-    exam = await exam_service.get_exam(db, exam_id)
+    exam = await exam_service.get_owned_exam(
+        db, exam_id, current_user.user_id, current_user.role
+    )
     exam = await exam_service.update_exam(db, exam, body)
     return ExamOut.model_validate(exam)
 
@@ -81,7 +83,9 @@ async def delete_exam(
     db: AsyncSession = Depends(get_db),
 ):
     require_role(current_user, *_WRITE_ROLES)
-    exam = await exam_service.get_exam(db, exam_id)
+    exam = await exam_service.get_owned_exam(
+        db, exam_id, current_user.user_id, current_user.role
+    )
     await exam_service.delete_exam(db, exam)
     return Response(status_code=204)
 

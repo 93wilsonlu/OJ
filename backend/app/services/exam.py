@@ -75,6 +75,19 @@ async def get_exam_for_user(
     return exam
 
 
+async def get_owned_exam(
+    db: AsyncSession, exam_id: uuid.UUID, user_id: uuid.UUID, role: str
+) -> Exam:
+    """Fetch an exam, enforcing owner-or-admin write scope (I5).
+
+    Interviewers may modify only exams they created; admins may modify any.
+    """
+    exam = await get_exam(db, exam_id)
+    if role != "admin" and exam.created_by != user_id:
+        raise HTTPException(status_code=403, detail="Not the owner of this exam")
+    return exam
+
+
 async def create_exam(db: AsyncSession, data: ExamCreate, creator_id: uuid.UUID) -> Exam:
     exam = Exam(
         title=data.title,

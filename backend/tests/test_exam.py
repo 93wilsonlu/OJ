@@ -24,6 +24,7 @@ from app.services.exam import (
     delete_exam,
     get_exam,
     get_exam_for_user,
+    get_owned_exam,
     list_exams,
     update_exam,
 )
@@ -333,3 +334,33 @@ def test_exam_create_rejects_end_before_start():
     now = datetime.now(UTC)
     with pytest.raises(ValueError):
         ExamCreate(title="T", start_time=now, end_time=now - timedelta(hours=1))
+
+
+# ── service: owner-or-admin write scope (I5) ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_owned_exam_allows_owner():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result = await get_owned_exam(db, exam.exam_id, exam.created_by, "interviewer")
+    assert result is exam
+
+
+@pytest.mark.asyncio
+async def test_get_owned_exam_blocks_non_owner():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    with pytest.raises(HTTPException) as exc:
+        await get_owned_exam(db, exam.exam_id, uuid.uuid4(), "interviewer")
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_owned_exam_allows_admin():
+    exam = _make_exam()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    result = await get_owned_exam(db, exam.exam_id, uuid.uuid4(), "admin")
+    assert result is exam
