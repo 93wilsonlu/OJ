@@ -56,6 +56,17 @@ def _make_exam(title: str = "Test Exam") -> Exam:
     return e
 
 
+def _make_assignment(exam: Exam, candidate: User, problem: Problem) -> ExamAssignment:
+    assignment = ExamAssignment()
+    assignment.assignment_id = uuid.uuid4()
+    assignment.exam_id = exam.exam_id
+    assignment.candidate_id = candidate.user_id
+    assignment.problem_id = problem.problem_id
+    assignment.assigned_difficulty = None
+    assignment.created_at = datetime.now(UTC)
+    return assignment
+
+
 def _mock_db(rows=None):
     mock_result = MagicMock()
     mock_result.scalars.return_value = iter(rows or [])
