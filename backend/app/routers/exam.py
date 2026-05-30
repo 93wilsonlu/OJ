@@ -109,7 +109,7 @@ async def list_assignments(
     db: AsyncSession = Depends(get_db),
 ):
     require_role(current_user, *_WRITE_ROLES)
-    await exam_service.get_exam(db, exam_id)
+    await exam_service.get_owned_exam(db, exam_id, current_user.user_id, current_user.role)
     assignments = await exam_service.list_assignments(db, exam_id)
     return [ExamAssignmentOut.model_validate(a) for a in assignments]
 
@@ -122,7 +122,7 @@ async def create_assignment(
     db: AsyncSession = Depends(get_db),
 ):
     require_role(current_user, *_WRITE_ROLES)
-    await exam_service.get_exam(db, exam_id)
+    await exam_service.get_owned_exam(db, exam_id, current_user.user_id, current_user.role)
     assignment = await exam_service.create_assignment(db, exam_id, body)
     return ExamAssignmentOut.model_validate(assignment)
 
@@ -135,5 +135,6 @@ async def delete_assignment(
     db: AsyncSession = Depends(get_db),
 ):
     require_role(current_user, *_WRITE_ROLES)
-    await exam_service.delete_assignment(db, assignment_id)
+    await exam_service.get_owned_exam(db, exam_id, current_user.user_id, current_user.role)
+    await exam_service.delete_assignment(db, exam_id, assignment_id)
     return Response(status_code=204)

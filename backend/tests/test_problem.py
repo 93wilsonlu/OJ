@@ -7,20 +7,13 @@ Critical success criterion (Phase 3):
 """
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
-from app.main import app
-from app.database import get_db
-from app.deps import get_current_user
-from app.models.problem import Problem
 from app.models.test_case import TestCase
-from app.models.user import User
 from app.schemas.problem import ProblemCreate, ProblemUpdate
-from app.services.auth import hash_password
 from app.services.problem import (
     create_problem,
     delete_problem,
@@ -29,36 +22,16 @@ from app.services.problem import (
     list_test_cases,
     update_problem,
 )
+from tests.factories import (
+    client_for as _client_for,
+    clear_overrides as _clear_overrides,
+    make_problem as _make_problem,
+    make_user as _make_user,
+    mock_db as _mock_db,
+)
 
 
 # ── factories ─────────────────────────────────────────────────────────────────
-
-def _make_user(role: str = "problem_admin") -> User:
-    u = User()
-    u.user_id = uuid.uuid4()
-    u.name = "Test"
-    u.email = "test@example.com"
-    u.password_hash = hash_password("secret")
-    u.role = role
-    return u
-
-
-def _make_problem() -> Problem:
-    p = Problem()
-    p.problem_id = uuid.uuid4()
-    p.title = "Two Sum"
-    p.description = "Find two numbers that add to target."
-    p.input_format = None
-    p.output_format = None
-    p.sample_input = None
-    p.sample_output = None
-    p.difficulty = "easy"
-    p.time_limit = 1000
-    p.memory_limit = 256
-    p.allowed_langs = ["python3", "cpp17"]
-    p.created_by = uuid.uuid4()
-    return p
-
 
 def _make_test_case(problem_id: uuid.UUID, is_hidden: bool = False) -> TestCase:
     tc = TestCase()
@@ -69,20 +42,6 @@ def _make_test_case(problem_id: uuid.UUID, is_hidden: bool = False) -> TestCase:
     tc.is_hidden = is_hidden
     tc.score_weight = 1.0
     return tc
-
-
-def _mock_db(rows=None):
-    """Return a mock AsyncSession whose execute() yields rows via scalars()."""
-    mock_result = MagicMock()
-    mock_result.scalars.return_value = iter(rows or [])
-    db = MagicMock()
-    db.execute = AsyncMock(return_value=mock_result)
-    db.get = AsyncMock(return_value=None)
-    db.add = MagicMock()
-    db.delete = AsyncMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-    return db
 
 
 # ── service: list / get ────────────────────────────────────────────────────────
@@ -176,20 +135,6 @@ async def test_list_test_cases_includes_hidden_for_admin():
 
 
 # ── router integration: hidden cases absent from GET response ─────────────────
-
-def _client_for(user: User):
-    """Build a TestClient with get_current_user and get_db overridden."""
-    async def override_db():
-        yield AsyncMock()
-
-    app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[get_db] = override_db
-    return TestClient(app)
-
-
-def _clear_overrides():
-    app.dependency_overrides.clear()
-
 
 @patch("app.routers.problem.problem_service.list_test_cases", new_callable=AsyncMock)
 @patch("app.routers.problem.problem_service.get_problem", new_callable=AsyncMock)

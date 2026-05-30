@@ -10,7 +10,6 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.refresh_token import RefreshToken
-from app.models.user import User
 from app.services.auth import (
     create_access_token,
     hash_password,
@@ -20,17 +19,7 @@ from app.services.auth import (
     require_role,
     verify_password,
 )
-
-
-def _make_user(role: str = "candidate") -> User:
-    u = User()
-    u.user_id = uuid.uuid4()
-    u.name = "Test User"
-    u.email = "test@example.com"
-    u.password_hash = hash_password("secret")
-    u.role = role
-    u.is_active = True
-    return u
+from tests.factories import make_user as _make_user
 
 
 def _make_token(user_id: uuid.UUID, revoked: bool = False, expired: bool = False) -> RefreshToken:
