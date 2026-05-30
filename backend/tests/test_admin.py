@@ -8,16 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
-from app.database import get_db
-from app.deps import get_current_user
-from app.main import app
-from app.models.user import User
-from app.models.exam import Exam
-from app.models.exam_assignment import ExamAssignment
 from app.models.judge_result import JudgeResult
-from app.models.problem import Problem
 from app.models.submission import Submission
 from app.schemas.admin import AdminUserCreate, AdminUserUpdate
 from app.schemas.admin import AdminUserOut
@@ -30,86 +22,16 @@ from app.services.admin import (
     get_exam_results,
     update_user,
 )
-from app.services.auth import hash_password
-
-
-def _make_user(role: str = "admin") -> User:
-    user = User()
-    user.user_id = uuid.uuid4()
-    user.name = "Test User"
-    user.email = f"{role}-{user.user_id}@example.com"
-    user.password_hash = hash_password("secret123")
-    user.role = role
-    user.is_active = True
-    user.created_at = datetime.now(UTC)
-    user.updated_at = datetime.now(UTC)
-    return user
-
-
-def _mock_db() -> MagicMock:
-    db = MagicMock()
-    db.add = MagicMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-    db.rollback = AsyncMock()
-    db.get = AsyncMock(return_value=None)
-    return db
-
-
-def _make_exam() -> Exam:
-    exam = Exam()
-    exam.exam_id = uuid.uuid4()
-    exam.title = "Backend Interview"
-    exam.description = None
-    exam.start_time = datetime.now(UTC)
-    exam.end_time = datetime.now(UTC)
-    exam.show_score = True
-    exam.created_by = uuid.uuid4()
-    exam.created_at = datetime.now(UTC)
-    return exam
-
-
-def _make_problem(title: str = "Two Sum") -> Problem:
-    problem = Problem()
-    problem.problem_id = uuid.uuid4()
-    problem.title = title
-    problem.description = ""
-    problem.input_format = None
-    problem.output_format = None
-    problem.sample_input = None
-    problem.sample_output = None
-    problem.difficulty = "easy"
-    problem.time_limit = 1000
-    problem.memory_limit = 128
-    problem.allowed_langs = ["python3"]
-    problem.created_by = uuid.uuid4()
-    problem.created_at = datetime.now(UTC)
-    return problem
-
-
-def _make_assignment(exam: Exam, candidate: User, problem: Problem) -> ExamAssignment:
-    assignment = ExamAssignment()
-    assignment.assignment_id = uuid.uuid4()
-    assignment.exam_id = exam.exam_id
-    assignment.candidate_id = candidate.user_id
-    assignment.problem_id = problem.problem_id
-    assignment.assigned_difficulty = None
-    assignment.created_at = datetime.now(UTC)
-    return assignment
-
-
-def _make_submission(exam: Exam, candidate: User, problem: Problem) -> Submission:
-    submission = Submission()
-    submission.submission_id = uuid.uuid4()
-    submission.exam_id = exam.exam_id
-    submission.candidate_id = candidate.user_id
-    submission.problem_id = problem.problem_id
-    submission.language = "python3"
-    submission.code_storage_key = "submissions/code.py"
-    submission.status = "completed"
-    submission.ip_address = "127.0.0.1"
-    submission.submitted_at = datetime.now(UTC)
-    return submission
+from tests.factories import (
+    client_for as _client_for,
+    clear_overrides as _clear_overrides,
+    make_assignment as _make_assignment,
+    make_exam as _make_exam,
+    make_problem as _make_problem,
+    make_submission as _make_submission,
+    make_user as _make_user,
+    mock_db as _mock_db,
+)
 
 
 def _make_judge_result(submission: Submission, score: float, verdict: str) -> JudgeResult:
@@ -267,9 +189,9 @@ async def test_get_exam_results_uses_best_score_per_problem():
     candidate = _make_user("candidate")
     exam = _make_exam()
     problem = _make_problem()
-    assignment = _make_assignment(exam, candidate, problem)
-    low_submission = _make_submission(exam, candidate, problem)
-    high_submission = _make_submission(exam, candidate, problem)
+    assignment = _make_assignment(exam.exam_id, candidate.user_id, problem.problem_id)
+    low_submission = _make_submission(candidate.user_id, exam.exam_id, problem.problem_id)
+    high_submission = _make_submission(candidate.user_id, exam.exam_id, problem.problem_id)
     low_result = _make_judge_result(low_submission, 40, "Wrong Answer")
     high_result = _make_judge_result(high_submission, 100, "Accepted")
 
@@ -290,19 +212,6 @@ async def test_get_exam_results_uses_best_score_per_problem():
     assert results.candidates[0].problems[0].best_score == 100
     assert results.candidates[0].problems[0].submission_count == 2
     assert results.candidates[0].problems[0].latest_verdict == "Accepted"
-
-
-def _client_for(user: User):
-    async def override_db():
-        yield AsyncMock()
-
-    app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[get_db] = override_db
-    return TestClient(app)
-
-
-def _clear_overrides():
-    app.dependency_overrides.clear()
 
 
 def test_non_admin_gets_403_on_user_list():

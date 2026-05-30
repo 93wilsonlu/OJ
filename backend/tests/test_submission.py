@@ -14,17 +14,8 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
-from app.database import get_db
-from app.deps import get_current_user
-from app.main import app
-from app.models.exam import Exam
-from app.models.exam_assignment import ExamAssignment
-from app.models.submission import Submission
-from app.models.user import User
 from app.schemas.submission import SubmissionCreate
-from app.services.auth import hash_password
 from app.services.submission import (
     _check_rate_limit,
     create_submission,
@@ -32,72 +23,18 @@ from app.services.submission import (
     get_submission,
     list_submissions,
 )
+from tests.factories import (
+    client_for as _client_for,
+    clear_overrides as _clear_overrides,
+    make_assignment as _make_assignment,
+    make_exam as _make_exam,
+    make_submission as _make_submission,
+    make_user as _make_user,
+    mock_db as _mock_db,
+)
 
 
 # ── factories ─────────────────────────────────────────────────────────────────
-
-def _make_user(role: str = "candidate") -> User:
-    u = User()
-    u.user_id = uuid.uuid4()
-    u.name = "Test"
-    u.email = "test@example.com"
-    u.password_hash = hash_password("secret")
-    u.role = role
-    return u
-
-
-def _make_exam(ended: bool = False) -> Exam:
-    e = Exam()
-    e.exam_id = uuid.uuid4()
-    e.title = "Exam"
-    e.description = None
-    offset = timedelta(hours=-1) if ended else timedelta(hours=1)
-    e.start_time = datetime.now(UTC) - timedelta(hours=2)
-    e.end_time = datetime.now(UTC) + offset
-    e.show_score = False
-    e.created_by = uuid.uuid4()
-    e.created_at = datetime.now(UTC) - timedelta(hours=2)
-    return e
-
-
-def _make_assignment(exam_id: uuid.UUID, candidate_id: uuid.UUID, problem_id: uuid.UUID) -> ExamAssignment:
-    a = ExamAssignment()
-    a.assignment_id = uuid.uuid4()
-    a.exam_id = exam_id
-    a.candidate_id = candidate_id
-    a.problem_id = problem_id
-    a.assigned_difficulty = None
-    a.created_at = datetime.now(UTC)
-    return a
-
-
-def _make_submission(candidate_id: uuid.UUID, exam_id: uuid.UUID, problem_id: uuid.UUID) -> Submission:
-    s = Submission()
-    s.submission_id = uuid.uuid4()
-    s.exam_id = exam_id
-    s.problem_id = problem_id
-    s.candidate_id = candidate_id
-    s.language = "python3"
-    s.code_storage_key = f"submissions/{s.submission_id}/code.py"
-    s.status = "pending"
-    s.ip_address = "127.0.0.1"
-    s.submitted_at = datetime.now(UTC)
-    return s
-
-
-def _mock_db():
-    mock_result = MagicMock()
-    mock_result.scalars.return_value = iter([])
-    mock_result.scalar_one_or_none.return_value = None
-    db = MagicMock()
-    db.execute = AsyncMock(return_value=mock_result)
-    db.get = AsyncMock(return_value=None)
-    db.add = MagicMock()
-    db.delete = AsyncMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-    return db
-
 
 # ── service: rate limit ────────────────────────────────────────────────────────
 
@@ -322,19 +259,6 @@ def test_judge_result_shows_error_message_when_score_visible():
 
     out = _judge_result_out(_make_judge_result(), hide_score=False)
     assert out.error_message == "boom: internal trace"
-
-
-def _client_for(user: User):
-    async def override_db():
-        yield AsyncMock()
-
-    app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[get_db] = override_db
-    return TestClient(app)
-
-
-def _clear_overrides():
-    app.dependency_overrides.clear()
 
 
 @patch("app.routers.submission.submission_service.create_submission", new_callable=AsyncMock)

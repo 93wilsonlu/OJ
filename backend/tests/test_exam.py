@@ -8,17 +8,9 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
-from app.database import get_db
-from app.deps import get_current_user
-from app.main import app
-from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
-from app.models.problem import Problem
-from app.models.user import User
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
-from app.services.auth import hash_password
 from app.services.exam import (
     create_assignment,
     create_exam,
@@ -30,57 +22,13 @@ from app.services.exam import (
     list_exams,
     update_exam,
 )
-
-
-# ── factories ─────────────────────────────────────────────────────────────────
-
-def _make_user(role: str = "interviewer") -> User:
-    u = User()
-    u.user_id = uuid.uuid4()
-    u.name = "Test"
-    u.email = "test@example.com"
-    u.password_hash = hash_password("secret")
-    u.role = role
-    return u
-
-
-def _make_exam(title: str = "Test Exam") -> Exam:
-    e = Exam()
-    e.exam_id = uuid.uuid4()
-    e.title = title
-    e.description = None
-    e.start_time = datetime.now(UTC)
-    e.end_time = datetime.now(UTC) + timedelta(hours=2)
-    e.show_score = False
-    e.created_by = uuid.uuid4()
-    e.created_at = datetime.now(UTC)
-    return e
-
-
-def _make_assignment(exam: Exam, candidate: User, problem: Problem) -> ExamAssignment:
-    assignment = ExamAssignment()
-    assignment.assignment_id = uuid.uuid4()
-    assignment.exam_id = exam.exam_id
-    assignment.candidate_id = candidate.user_id
-    assignment.problem_id = problem.problem_id
-    assignment.assigned_difficulty = None
-    assignment.created_at = datetime.now(UTC)
-    return assignment
-
-
-def _mock_db(rows=None):
-    mock_result = MagicMock()
-    mock_result.scalars.return_value = iter(rows or [])
-    mock_result.scalar_one_or_none.return_value = None
-    db = MagicMock()
-    db.execute = AsyncMock(return_value=mock_result)
-    db.get = AsyncMock(return_value=None)
-    db.add = MagicMock()
-    db.delete = AsyncMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-    db.rollback = AsyncMock()
-    return db
+from tests.factories import (
+    client_for as _client_for,
+    clear_overrides as _clear_overrides,
+    make_exam as _make_exam,
+    make_user as _make_user,
+    mock_db as _mock_db,
+)
 
 
 # ── service: list / get ────────────────────────────────────────────────────────
@@ -217,39 +165,6 @@ async def test_delete_exam_deletes_dependents_in_fk_order():
     db.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_delete_exam_cleans_up_dependent_rows():
-    """I1: exams with submissions/assignments must not 500 — deps have no DB
-    cascade, so they're deleted in FK order (judge_results → submissions →
-    assignments → exam)."""
-    exam = _make_exam()
-    sub = MagicMock()
-    sub.submission_id = uuid.uuid4()
-    judge_result = MagicMock()
-    assignment = _make_assignment(exam.exam_id, uuid.uuid4(), uuid.uuid4())
-
-    def _result(rows):
-        r = MagicMock()
-        r.scalars.return_value = iter(rows)
-        return r
-
-    db = _mock_db()
-    db.execute = AsyncMock(side_effect=[
-        _result([sub]),           # submissions for this exam
-        _result([judge_result]),  # judge results for those submissions
-        _result([assignment]),    # assignments for this exam
-    ])
-
-    await delete_exam(db, exam)
-
-    deleted = [call.args[0] for call in db.delete.await_args_list]
-    assert judge_result in deleted
-    assert sub in deleted
-    assert assignment in deleted
-    assert exam in deleted
-    db.commit.assert_awaited_once()
-
-
 # ── service: assignment ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -309,19 +224,6 @@ async def test_delete_assignment_missing_raises_404():
 
 
 # ── router integration ─────────────────────────────────────────────────────────
-
-def _client_for(user: User):
-    async def override_db():
-        yield AsyncMock()
-
-    app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[get_db] = override_db
-    return TestClient(app)
-
-
-def _clear_overrides():
-    app.dependency_overrides.clear()
-
 
 @patch("app.routers.exam.exam_service.create_exam", new_callable=AsyncMock)
 def test_candidate_gets_403_on_create_exam(mock_create):
