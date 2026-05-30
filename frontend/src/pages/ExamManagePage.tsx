@@ -181,7 +181,7 @@ export default function ExamManagePage() {
           .map(([, assignmentId]) => apiDeleteAssignment(freshToken, targetId, assignmentId)),
       ])
 
-      navigate(isNew ? `/exams/${targetId}/manage` : '/exams')
+      navigate(isNew ? `/exams/${targetId}/manage` : '/interviewer')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed')
     } finally {
