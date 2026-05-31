@@ -153,7 +153,7 @@ export default function UserFormPage() {
           </label>
         )}
 
-        {error && <p className="text-red-400 text-sm font-mono">{error}</p>}
+        {error && <p className="text-red-700 text-sm font-mono">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
           <Link
@@ -165,8 +165,8 @@ export default function UserFormPage() {
           <button
             type="submit"
             disabled={saving}
-            className="px-4 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
-                       hover:bg-oj-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 rounded-md text-sm font-medium bg-oj-accent text-white
+                       hover:bg-oj-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving
               ? (isNew ? 'Creating…' : 'Saving…')

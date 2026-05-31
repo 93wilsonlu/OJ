@@ -263,7 +263,7 @@ export default function ExamManagePage() {
           {!isNew && (
             <button
               onClick={handleDelete}
-              className="px-3 py-1.5 rounded-md text-xs text-red-400 hover:bg-red-400/10"
+              className="px-3 py-1.5 rounded-md text-xs text-red-700 hover:bg-red-50"
             >
               Delete exam
             </button>
@@ -271,15 +271,15 @@ export default function ExamManagePage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-5 py-2 rounded-md text-sm font-medium bg-oj-accent text-oj-bg
-                       hover:bg-oj-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2 rounded-md text-sm font-medium bg-oj-accent text-white
+                       hover:bg-oj-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : isNew ? 'Create exam' : 'Save changes'}
           </button>
         </div>
       </div>
 
-      {error && <p className="text-red-400 text-sm font-mono mb-4">{error}</p>}
+      {error && <p className="text-red-700 text-sm font-mono mb-4">{error}</p>}
 
       <section className="space-y-4 rounded-xl border border-oj-border bg-oj-surface p-5 mb-8">
         <h2 className="text-sm font-semibold text-oj-fg-muted uppercase tracking-wider font-mono">
@@ -382,10 +382,10 @@ export default function ExamManagePage() {
                 <span className="text-sm text-oj-fg truncate flex-1">{problem.title}</span>
                 <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-mono ${
                   problem.difficulty === 'easy'
-                    ? 'bg-green-900/40 text-green-400'
+                    ? 'bg-green-50 text-green-700'
                     : problem.difficulty === 'hard'
-                      ? 'bg-red-900/40 text-red-400'
-                      : 'bg-yellow-900/40 text-yellow-400'
+                      ? 'bg-red-50 text-red-700'
+                      : 'bg-amber-50 text-amber-700'
                 }`}>
                   {problem.difficulty}
                 </span>
