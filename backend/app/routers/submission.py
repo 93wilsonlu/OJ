@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,7 +13,11 @@ from app.schemas.submission import (
     SubmissionDetailOut,
     SubmissionListItemOut,
     SubmissionOut,
+    SubmissionRunCreate,
+    SubmissionRunQueuedOut,
+    SubmissionRunResultOut,
 )
+from app.services import custom_run as custom_run_service
 from app.services import submission as submission_service
 from app.services.auth import require_role
 
@@ -58,11 +62,12 @@ async def create_submission(
 async def list_submissions(
     exam_id: uuid.UUID | None = None,
     candidate_id: uuid.UUID | None = None,
+    candidate: str | None = Query(default=None, min_length=1),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     submissions = await submission_service.list_submissions(
-        db, current_user.user_id, current_user.role, exam_id, candidate_id
+        db, current_user.user_id, current_user.role, exam_id, candidate_id, candidate
     )
     items: list[SubmissionListItemOut] = []
     for row in submissions:
@@ -70,6 +75,7 @@ async def list_submissions(
         items.append(
             SubmissionListItemOut(
                 **SubmissionOut.model_validate(row.submission).model_dump(),
+                exam_title=row.exam_title,
                 problem_title=row.problem_title,
                 candidate_name=row.candidate_name,
                 candidate_email=row.candidate_email,
@@ -77,6 +83,24 @@ async def list_submissions(
             )
         )
     return items
+
+
+@router.post("/run", response_model=SubmissionRunQueuedOut, status_code=202)
+async def create_submission_run(
+    body: SubmissionRunCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await custom_run_service.create_run(db, current_user, body)
+    return SubmissionRunQueuedOut(**result)
+
+
+@router.get("/run/{run_id}", response_model=SubmissionRunResultOut)
+async def get_submission_run(
+    run_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+):
+    return SubmissionRunResultOut(**custom_run_service.get_run(current_user, run_id))
 
 
 @router.get("/{submission_id}", response_model=SubmissionDetailOut)

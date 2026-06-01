@@ -5,6 +5,7 @@ import { apiListProblems } from '../api/problems';
 import { apiListAdminUsers } from '../api/admin';
 import { useAuth } from '../hooks/useAuth';
 import type { Exam, ExamProblem } from '../types/exam';
+import { formatDate } from '../utils/format';
 
 const inputCls = `w-full bg-oj-surface2 border border-oj-border rounded px-3 py-1.5
                   text-sm text-oj-fg focus:outline-none focus:ring-1 focus:ring-oj-accent`;
@@ -291,7 +292,7 @@ export default function ExamDetail() {
                    />
                 ) : (
                   <div className="text-sm text-oj-fg font-mono bg-oj-surface2 p-2 rounded border border-oj-border">
-                    {new Date(exam.start_time).toLocaleString()}
+                    {formatDate(exam.start_time)}
                   </div>
                 )}
               </div>
@@ -306,7 +307,7 @@ export default function ExamDetail() {
                    />
                 ) : (
                   <div className="text-sm text-oj-fg font-mono bg-oj-surface2 p-2 rounded border border-oj-border">
-                    {new Date(exam.end_time).toLocaleString()}
+                    {formatDate(exam.end_time)}
                   </div>
                 )}
               </div>

@@ -15,6 +15,7 @@ from app.schemas.admin import (
     ExamProblemResultOut,
     ExamResultsOut,
 )
+from app.schemas.exam import ExamCandidateStateOut
 from app.services import admin as admin_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -104,6 +105,10 @@ async def get_exam_results(
                 candidate_id=candidate.candidate_id,
                 name=candidate.name,
                 email=candidate.email,
+                is_active=candidate.is_active,
+                proctoring_status=candidate.proctoring_status,
+                locked_at=candidate.locked_at,
+                lock_reason=candidate.lock_reason,
                 total_score=candidate.total_score,
                 problems=[
                     ExamProblemResultOut(
@@ -119,3 +124,22 @@ async def get_exam_results(
             for candidate in results.candidates
         ],
     )
+
+
+@router.post(
+    "/exams/{exam_id}/candidates/{candidate_id}/unlock",
+    response_model=ExamCandidateStateOut,
+)
+async def unlock_exam_candidate(
+    exam_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    state = await admin_service.unlock_exam_candidate(
+        db,
+        current_user,
+        exam_id,
+        candidate_id,
+    )
+    return ExamCandidateStateOut.model_validate(state)

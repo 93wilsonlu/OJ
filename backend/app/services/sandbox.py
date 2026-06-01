@@ -1,8 +1,9 @@
-import os
-import tarfile
 import io
+import tarfile
 import time
+
 import docker
+
 
 class SandboxError(Exception):
     pass
@@ -68,6 +69,19 @@ def _read_peak_kb(container) -> int:
         except Exception:
             pass
     return 0
+
+
+def _read_file_limited(container, path: str, limit: int) -> tuple[str, bool]:
+    size_code, size_out = container.exec_run(
+        ["sh", "-c", f"test -f {path} && wc -c < {path} || echo 0"]
+    )
+    size_text = size_out.decode("utf-8", errors="ignore").strip() or "0"
+    size = int(size_text) if size_code == 0 else 0
+    read_code, read_out = container.exec_run(
+        ["sh", "-c", f"test -f {path} && head -c {limit} {path} || true"]
+    )
+    text = read_out.decode("utf-8", errors="ignore") if read_code == 0 else ""
+    return text, size > limit
 
 def _create_tar(files: dict) -> bytes:
     file_io = io.BytesIO()
@@ -186,5 +200,84 @@ def run_test_case(
             return "Wrong Answer", time_used_ms, mem_used_kb
 
         return "Accepted", time_used_ms, mem_used_kb
+    finally:
+        _remove_container(box_dir)
+
+
+def run_custom_input(
+    box_id: int,
+    lang: str,
+    time_limit_ms: int,
+    memory_limit_mb: int,
+    input_data: str,
+    box_dir: dict,
+    output_limit: int = 32 * 1024,
+) -> tuple[str, int, int, str, str, bool, bool]:
+    client = box_dir.get("client")
+    box_archive = box_dir.get("box_archive")
+    if not client or box_archive is None:
+        return "System Error", 0, 0, "", "", False, False
+
+    time_limit_s = time_limit_ms / 1000.0
+    mem_limit = f"{memory_limit_mb}m"
+
+    try:
+        container = _create_container(
+            client,
+            _image(lang),
+            mem_limit,
+            ["sleep", str(int(time_limit_s) + 10)],
+            RUN_TMPFS,
+        )
+        box_dir["container"] = container
+
+        container.put_archive("/opt", box_archive)
+        container.put_archive("/opt", _create_tar({"input.txt": input_data}))
+
+        stage = "cp -r /opt/box/. /box/ && cp /opt/input.txt /box/"
+        exit_code, stage_output = container.exec_run(["sh", "-c", stage], workdir="/box")
+        if exit_code != 0:
+            return (
+                "System Error",
+                0,
+                0,
+                "",
+                stage_output.decode("utf-8", errors="ignore"),
+                False,
+                False,
+            )
+
+        if lang == "python3":
+            cmd = f"timeout {time_limit_s}s python3 main.py < input.txt > output.txt 2> stderr.txt"
+        else:
+            cmd = f"timeout {time_limit_s}s ./main < input.txt > output.txt 2> stderr.txt"
+
+        start_time = time.time()
+        exit_code, _ = container.exec_run(["sh", "-c", cmd], workdir="/box")
+        time_used_ms = int((time.time() - start_time) * 1000)
+        mem_used_kb = _read_peak_kb(container)
+        stdout, stdout_truncated = _read_file_limited(container, "/box/output.txt", output_limit)
+        stderr, stderr_truncated = _read_file_limited(container, "/box/stderr.txt", output_limit)
+
+        if exit_code == 124:
+            verdict = "Time Limit Exceeded"
+            time_used_ms = time_limit_ms
+        elif exit_code == 137 or exit_code == 9:
+            verdict = "Memory Limit Exceeded"
+            mem_used_kb = memory_limit_mb * 1024
+        elif exit_code != 0:
+            verdict = "Runtime Error"
+        else:
+            verdict = "OK"
+
+        return (
+            verdict,
+            time_used_ms,
+            mem_used_kb,
+            stdout,
+            stderr,
+            stdout_truncated,
+            stderr_truncated,
+        )
     finally:
         _remove_container(box_dir)

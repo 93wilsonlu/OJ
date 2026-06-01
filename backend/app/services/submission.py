@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import anyio
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam
@@ -14,6 +14,7 @@ from app.models.problem import Problem
 from app.models.submission import Submission
 from app.models.user import User
 from app.schemas.submission import SubmissionCreate
+from app.services import proctoring as proctoring_service
 from app.services import queue as queue_service
 from app.services import storage
 
@@ -25,6 +26,7 @@ _LANG_EXT = {"python3": "py", "cpp17": "cpp"}
 class SubmissionListRow:
     submission: Submission
     judge_result: JudgeResult | None
+    exam_title: str
     problem_title: str
     candidate_name: str
     candidate_email: str
@@ -84,6 +86,7 @@ async def create_submission(
         raise HTTPException(status_code=403, detail="Exam has ended")
 
     await _check_assignment(db, candidate_id, data.exam_id, data.problem_id)
+    await proctoring_service.ensure_candidate_not_locked(db, data.exam_id, candidate_id)
     await _check_rate_limit(db, candidate_id, data.exam_id, data.problem_id)
 
     submission_id = uuid.uuid4()
@@ -154,6 +157,7 @@ async def list_submissions(
     requester_role: str,
     exam_id: uuid.UUID | None = None,
     candidate_id: uuid.UUID | None = None,
+    candidate_search: str | None = None,
 ) -> list[SubmissionListRow]:
     stmt = (
         select(Submission, JudgeResult, Problem, User, Exam)
@@ -168,6 +172,12 @@ async def list_submissions(
     elif candidate_id is not None:
         stmt = stmt.where(Submission.candidate_id == candidate_id)
 
+    if requester_role != "candidate" and candidate_search:
+        term = candidate_search.strip()
+        if term:
+            pattern = f"%{term}%"
+            stmt = stmt.where(or_(User.name.ilike(pattern), User.email.ilike(pattern)))
+
     if exam_id is not None:
         stmt = stmt.where(Submission.exam_id == exam_id)
 
@@ -177,6 +187,7 @@ async def list_submissions(
         SubmissionListRow(
             submission=submission,
             judge_result=judge_result,
+            exam_title=exam.title,
             problem_title=problem.title,
             candidate_name=candidate.name,
             candidate_email=candidate.email,

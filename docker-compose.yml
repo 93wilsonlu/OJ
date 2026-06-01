@@ -84,7 +84,7 @@ services:
   judge-monitor:
     build:
       context: ./backend
-      dockerfile: Dockerfile.worker
+      dockerfile: Dockerfile.worke
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
@@ -97,6 +97,29 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  run-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worke
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_SECURE: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "uv run rq worker run --with-scheduler --url $$REDIS_URL"
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   nginx:
     build:

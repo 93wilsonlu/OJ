@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class ExamCreate(BaseModel):
@@ -79,3 +79,21 @@ class ExamProblemOut(BaseModel):
     time_limit: int
     memory_limit: int
     allowed_langs: list[str]
+
+
+class ExamCandidateStateOut(BaseModel):
+    exam_id: uuid.UUID
+    candidate_id: uuid.UUID
+    status: str
+    warning_started_at: datetime | None
+    locked_at: datetime | None
+    lock_reason: str | None
+    last_event_type: str | None
+    last_seen_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ProctoringEventCreate(BaseModel):
+    event_type: str = Field(min_length=1, max_length=64)
+    violating: bool

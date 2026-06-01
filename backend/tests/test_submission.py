@@ -15,24 +15,36 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.schemas.submission import SubmissionCreate
+from app.schemas.submission import SubmissionCreate, SubmissionRunCreate
+from app.services import custom_run
 from app.services.submission import (
+    SubmissionListRow,
     _check_rate_limit,
     create_submission,
-    get_submission_source_code,
     get_submission,
-    list_submissions,
+    get_submission_source_code,
+)
+from tests.factories import (
+    clear_overrides as _clear_overrides,
 )
 from tests.factories import (
     client_for as _client_for,
-    clear_overrides as _clear_overrides,
+)
+from tests.factories import (
     make_assignment as _make_assignment,
+)
+from tests.factories import (
     make_exam as _make_exam,
+)
+from tests.factories import (
     make_submission as _make_submission,
+)
+from tests.factories import (
     make_user as _make_user,
+)
+from tests.factories import (
     mock_db as _mock_db,
 )
-
 
 # ── factories ─────────────────────────────────────────────────────────────────
 
@@ -157,7 +169,7 @@ async def test_create_submission_success(mock_put, mock_enqueue):
     assignment_result.scalar_one_or_none.return_value = assignment
     no_result = MagicMock()
     no_result.scalar_one_or_none.return_value = None
-    db.execute = AsyncMock(side_effect=[assignment_result, no_result])
+    db.execute = AsyncMock(side_effect=[assignment_result, no_result, no_result])
 
     data = SubmissionCreate(
         exam_id=exam.exam_id,
@@ -174,6 +186,40 @@ async def test_create_submission_success(mock_put, mock_enqueue):
     mock_put.assert_called_once()
     mock_enqueue.assert_called_once_with(submission.submission_id)
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("app.services.submission.queue_service.enqueue_submission")
+@patch("app.services.submission.storage.put_object")
+async def test_create_submission_locked_candidate_raises_403(mock_put, mock_enqueue):
+    exam = _make_exam()
+    candidate_id = uuid.uuid4()
+    problem_id = uuid.uuid4()
+    assignment = _make_assignment(exam.exam_id, candidate_id, problem_id)
+
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+
+    assignment_result = MagicMock()
+    assignment_result.scalar_one_or_none.return_value = assignment
+    locked_result = MagicMock()
+    locked_result.scalar_one_or_none.return_value = "locked"
+    db.execute = AsyncMock(side_effect=[assignment_result, locked_result])
+
+    data = SubmissionCreate(
+        exam_id=exam.exam_id,
+        problem_id=problem_id,
+        language="python3",
+        code="print('hello')",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await create_submission(db, data, candidate_id, "127.0.0.1")
+
+    assert exc.value.status_code == 403
+    assert "proctoring" in exc.value.detail.lower()
+    mock_put.assert_not_called()
+    mock_enqueue.assert_not_called()
 
 
 # ── service: get / list ────────────────────────────────────────────────────────
@@ -333,3 +379,118 @@ def test_candidate_post_submission_returns_202(mock_create):
     assert data["status"] == "pending"
     assert data["submission_id"] == str(submission.submission_id)
     mock_create.assert_called_once_with(ANY, ANY, candidate.user_id, ANY)
+
+
+@patch("app.routers.submission.submission_service.list_submissions", new_callable=AsyncMock)
+def test_interviewer_can_search_submissions_by_candidate(mock_list):
+    interviewer = _make_user("interviewer")
+    candidate = _make_user("candidate")
+    candidate.name = "Alice Candidate"
+    candidate.email = "alice@gmail.com"
+    exam = _make_exam("Backend Interview")
+    problem_id = uuid.uuid4()
+    submission = _make_submission(candidate.user_id, exam.exam_id, problem_id)
+    mock_list.return_value = [
+        SubmissionListRow(
+            submission=submission,
+            judge_result=None,
+            exam_title=exam.title,
+            problem_title="Two Sum",
+            candidate_name=candidate.name,
+            candidate_email=candidate.email,
+            exam_show_score=True,
+        )
+    ]
+
+    client = _client_for(interviewer)
+    try:
+        resp = client.get("/api/v1/submissions?candidate=alice@gmail.com")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data[0]["exam_title"] == "Backend Interview"
+    assert data[0]["candidate_email"] == "alice@gmail.com"
+    mock_list.assert_called_once_with(
+        ANY, interviewer.user_id, "interviewer", None, None, "alice@gmail.com"
+    )
+
+
+class _FakeRedis:
+    def __init__(self):
+        self.values = {}
+
+    def get(self, key):
+        return self.values.get(key)
+
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.values:
+            return False
+        self.values[key] = value
+        return True
+
+    def setex(self, key, ttl, value):
+        self.values[key] = value
+
+    def delete(self, key):
+        self.values.pop(key, None)
+
+
+@pytest.mark.asyncio
+@patch("app.services.custom_run.queue_service.enqueue_custom_run")
+@patch("app.services.custom_run.queue_service.get_run_queue")
+@patch("app.services.custom_run.get_redis")
+async def test_candidate_can_create_custom_run(mock_get_redis, mock_get_run_queue, mock_enqueue):
+    candidate = _make_user("candidate")
+    exam = _make_exam()
+    problem_id = uuid.uuid4()
+    problem = MagicMock()
+    problem.problem_id = problem_id
+    problem.allowed_langs = ["python3"]
+    assignment = _make_assignment(exam.exam_id, candidate.user_id, problem_id)
+
+    db = _mock_db()
+    db.get = AsyncMock(side_effect=[exam, problem])
+    assignment_result = MagicMock()
+    assignment_result.scalar_one_or_none.return_value = assignment
+    no_state_result = MagicMock()
+    no_state_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(side_effect=[assignment_result, no_state_result])
+
+    mock_get_redis.return_value = _FakeRedis()
+    mock_get_run_queue.return_value = MagicMock(count=0)
+
+    result = await custom_run.create_run(
+        db,
+        candidate,
+        SubmissionRunCreate(
+            exam_id=exam.exam_id,
+            problem_id=problem_id,
+            language="python3",
+            code="print(input())",
+            stdin="hello",
+        ),
+    )
+
+    assert result["status"] == "queued"
+    assert result["run_id"]
+    mock_enqueue.assert_called_once_with(result["run_id"])
+
+
+@pytest.mark.asyncio
+async def test_interviewer_cannot_create_custom_run():
+    interviewer = _make_user("interviewer")
+    with pytest.raises(HTTPException) as exc:
+        await custom_run.create_run(
+            _mock_db(),
+            interviewer,
+            SubmissionRunCreate(
+                exam_id=uuid.uuid4(),
+                problem_id=uuid.uuid4(),
+                language="python3",
+                code="print(1)",
+                stdin="",
+            ),
+        )
+    assert exc.value.status_code == 403

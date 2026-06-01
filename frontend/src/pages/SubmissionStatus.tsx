@@ -2,15 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import { formatDate } from '../utils/format'
 
 function metricValue(value: number | null | undefined, suffix = '') {
   if (value === null || value === undefined) return '-'

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { apiListExams } from '../api/exams'
 import { useAuth } from '../hooks/useAuth'
 import type { Exam } from '../types/exam'
+import { formatDate } from '../utils/format'
 
 type StatusFilter = 'all' | 'upcoming' | 'running' | 'expired'
 
@@ -122,8 +123,8 @@ export default function InterviewerDashboard() {
                   <td className={`p-4 text-xs font-mono ${STATUS_COLORS[status]}`}>
                     {STATUS_LABELS[status]}
                   </td>
-                  <td className="p-4 font-mono text-xs">{new Date(exam.start_time).toLocaleString()}</td>
-                  <td className="p-4 font-mono text-xs">{new Date(exam.end_time).toLocaleString()}</td>
+                  <td className="p-4 font-mono text-xs">{formatDate(exam.start_time)}</td>
+                  <td className="p-4 font-mono text-xs">{formatDate(exam.end_time)}</td>
                   <td className="p-4">
                     <Link to={`/exams/${exam.exam_id}/manage`} className="text-oj-accent hover:underline text-xs">
                       Manage →

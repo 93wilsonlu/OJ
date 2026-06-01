@@ -4,13 +4,15 @@ No Postgres required — DB session is fully mocked.
 """
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 from app.models.exam_assignment import ExamAssignment
+from app.models.exam_candidate_state import ExamCandidateState
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
+from app.services import proctoring
 from app.services.exam import (
     create_assignment,
     create_exam,
@@ -23,13 +25,20 @@ from app.services.exam import (
     update_exam,
 )
 from tests.factories import (
-    client_for as _client_for,
     clear_overrides as _clear_overrides,
+)
+from tests.factories import (
+    client_for as _client_for,
+)
+from tests.factories import (
     make_exam as _make_exam,
+)
+from tests.factories import (
     make_user as _make_user,
+)
+from tests.factories import (
     mock_db as _mock_db,
 )
-
 
 # ── service: list / get ────────────────────────────────────────────────────────
 
@@ -161,8 +170,89 @@ async def test_delete_exam_deletes_dependents_in_fk_order():
     tables = [
         call.args[0].table.name for call in db.execute.await_args_list
     ]
-    assert tables == ["judge_results", "submissions", "exam_assignments", "exams"]
+    assert tables == [
+        "judge_results",
+        "submissions",
+        "exam_candidate_states",
+        "exam_assignments",
+        "exams",
+    ]
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_proctoring_event_locks_after_warning_threshold():
+    state = ExamCandidateState()
+    state.exam_id = uuid.uuid4()
+    state.candidate_id = uuid.uuid4()
+    state.status = "active"
+    state.warning_started_at = datetime.now(UTC) - timedelta(seconds=11)
+    state.locked_at = None
+    state.lock_reason = None
+    state.last_event_type = "fullscreen_lost"
+    state.last_seen_at = datetime.now(UTC) - timedelta(seconds=11)
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = state
+    db = _mock_db()
+    db.execute = AsyncMock(return_value=result_mock)
+
+    locked = await proctoring.register_event(
+        db,
+        state.exam_id,
+        state.candidate_id,
+        "warning_timeout",
+        True,
+    )
+
+    assert locked.status == "locked"
+    assert locked.lock_reason == "warning_timeout"
+    assert locked.locked_at is not None
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_proctoring_restored_before_threshold_clears_warning():
+    state = ExamCandidateState()
+    state.exam_id = uuid.uuid4()
+    state.candidate_id = uuid.uuid4()
+    state.status = "active"
+    state.warning_started_at = datetime.now(UTC) - timedelta(seconds=3)
+    state.locked_at = None
+    state.lock_reason = None
+    state.last_event_type = "fullscreen_lost"
+    state.last_seen_at = datetime.now(UTC) - timedelta(seconds=3)
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = state
+    db = _mock_db()
+    db.execute = AsyncMock(return_value=result_mock)
+
+    restored = await proctoring.register_event(
+        db,
+        state.exam_id,
+        state.candidate_id,
+        "fullscreen_restored",
+        False,
+    )
+
+    assert restored.status == "active"
+    assert restored.warning_started_at is None
+    assert restored.locked_at is None
+
+
+@pytest.mark.asyncio
+async def test_locked_candidate_check_raises_403():
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = "locked"
+    db = _mock_db()
+    db.execute = AsyncMock(return_value=result_mock)
+
+    with pytest.raises(HTTPException) as exc:
+        await proctoring.ensure_candidate_not_locked(db, uuid.uuid4(), uuid.uuid4())
+
+    assert exc.value.status_code == 403
+    assert "proctoring" in exc.value.detail.lower()
 
 
 # ── service: assignment ────────────────────────────────────────────────────────

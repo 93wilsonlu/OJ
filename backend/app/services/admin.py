@@ -1,7 +1,7 @@
 import math
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 import anyio
 from fastapi import HTTPException
@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.exam_candidate_state import ExamCandidateState
 from app.models.judge_result import JudgeResult
 from app.models.problem import Problem
 from app.models.submission import Submission
@@ -34,6 +35,10 @@ class ExamCandidateResult:
     candidate_id: uuid.UUID
     name: str
     email: str
+    is_active: bool
+    proctoring_status: str | None
+    locked_at: datetime | None
+    lock_reason: str | None
     problems: list[ExamProblemResult]
     total_score: float
 
@@ -196,6 +201,37 @@ async def deactivate_user(
     )
 
 
+async def unlock_exam_candidate(
+    db: AsyncSession,
+    current_user: User,
+    exam_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+) -> ExamCandidateState:
+    _require_exam_result_viewer(current_user)
+
+    result = await db.execute(
+        select(ExamCandidateState).where(
+            ExamCandidateState.exam_id == exam_id,
+            ExamCandidateState.candidate_id == candidate_id,
+        )
+    )
+    state = result.scalar_one_or_none()
+    if state is None:
+        raise HTTPException(status_code=404, detail="Candidate state not found")
+
+    state.status = "active"
+    state.warning_started_at = None
+    state.locked_at = None
+    state.lock_reason = None
+    state.last_event_type = None
+    state.last_seen_at = datetime.now(UTC)
+
+    db.add(state)
+    await db.commit()
+    await db.refresh(state)
+    return state
+
+
 async def get_exam_results(
     db: AsyncSession,
     current_user: User,
@@ -208,9 +244,16 @@ async def get_exam_results(
         raise HTTPException(status_code=404, detail="Exam not found")
 
     stmt = (
-        select(ExamAssignment, User, Problem, Submission, JudgeResult)
+        select(ExamAssignment, User, Problem, Submission, JudgeResult, ExamCandidateState)
         .join(User, ExamAssignment.candidate_id == User.user_id)
         .join(Problem, ExamAssignment.problem_id == Problem.problem_id)
+        .outerjoin(
+            ExamCandidateState,
+            and_(
+                ExamCandidateState.exam_id == ExamAssignment.exam_id,
+                ExamCandidateState.candidate_id == ExamAssignment.candidate_id,
+            ),
+        )
         .outerjoin(
             Submission,
             and_(
@@ -231,11 +274,12 @@ async def get_exam_results(
     rows = await db.execute(stmt)
 
     candidates: dict[uuid.UUID, dict] = {}
-    for assignment, candidate, problem, submission, judge_result in rows.all():
+    for assignment, candidate, problem, submission, judge_result, candidate_state in rows.all():
         candidate_row = candidates.setdefault(
             candidate.user_id,
             {
                 "candidate": candidate,
+                "state": candidate_state,
                 "problems": {},
             },
         )
@@ -266,6 +310,7 @@ async def get_exam_results(
     result_candidates: list[ExamCandidateResult] = []
     for candidate_row in candidates.values():
         candidate = candidate_row["candidate"]
+        candidate_state = candidate_row["state"]
         problems = list(candidate_row["problems"].values())
         total_score = sum(problem.best_score or 0 for problem in problems)
         result_candidates.append(
@@ -273,6 +318,10 @@ async def get_exam_results(
                 candidate_id=candidate.user_id,
                 name=candidate.name,
                 email=candidate.email,
+                is_active=candidate.is_active,
+                proctoring_status=candidate_state.status if candidate_state else None,
+                locked_at=candidate_state.locked_at if candidate_state else None,
+                lock_reason=candidate_state.lock_reason if candidate_state else None,
                 problems=problems,
                 total_score=total_score,
             )

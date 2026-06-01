@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getErrorMessage } from '../api/errors'
-import { apiGetExam, apiListExamProblems } from '../api/exams'
+import { ApiError, getErrorMessage } from '../api/errors'
+import { apiGetCandidateExamState, apiGetExam, apiListExamProblems } from '../api/exams'
 import { useAuth } from '../hooks/useAuth'
 import type { Exam, ExamProblem } from '../types/exam'
+import { formatDate } from '../utils/format'
 
 type ExamStatus = 'Active' | 'Upcoming' | 'Ended'
 
@@ -17,15 +18,6 @@ function examStatus(exam: Exam, now: Date): ExamStatus {
   if (now < new Date(exam.start_time)) return 'Upcoming'
   if (now > new Date(exam.end_time)) return 'Ended'
   return 'Active'
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 function formatDuration(ms: number) {
@@ -54,6 +46,12 @@ function languageLabel(langs: string[]) {
   return langs.length > 0 ? langs.join(', ') : '-'
 }
 
+function isProctoringLockError(error: unknown) {
+  return error instanceof ApiError
+    && error.status === 403
+    && getErrorMessage(error, '').toLowerCase().includes('proctoring violation')
+}
+
 export default function ExamView() {
   const { examId } = useParams<{ examId: string }>()
   const { user, getAccessToken } = useAuth()
@@ -62,6 +60,7 @@ export default function ExamView() {
   const [now, setNow] = useState(() => new Date())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [candidateLocked, setCandidateLocked] = useState(false)
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30000)
@@ -80,13 +79,20 @@ export default function ExamView() {
       try {
         const token = await getAccessToken()
         if (!token) throw new Error('Session expired. Please sign in again.')
-        const [examData, problemList] = await Promise.all([
+        const [examData, problemList, state] = await Promise.all([
           apiGetExam(token, currentExamId),
-          apiListExamProblems(token, currentExamId),
+          apiListExamProblems(token, currentExamId).catch((e) => {
+            if (isProctoringLockError(e)) return []
+            throw e
+          }),
+          user?.role === 'candidate'
+            ? apiGetCandidateExamState(token, currentExamId)
+            : Promise.resolve(null),
         ])
         if (!cancelled) {
           setExam(examData)
           setProblems(problemList)
+          setCandidateLocked(state?.status === 'locked')
         }
       } catch (e) {
         if (!cancelled) setError(getErrorMessage(e, 'Failed to load exam'))
@@ -99,14 +105,14 @@ export default function ExamView() {
     return () => {
       cancelled = true
     }
-  }, [examId, getAccessToken])
+  }, [examId, getAccessToken, user?.role])
 
   if (loading) return <div className="p-8 text-sm text-oj-fg-muted">Loading...</div>
   if (error) return <div className="p-8 text-sm font-medium text-red-700">Error: {error}</div>
   if (!exam || !examId) return null
 
   const status = examStatus(exam, now)
-  const canSubmit = user?.role === 'candidate' && status === 'Active'
+  const canSubmit = user?.role === 'candidate' && status === 'Active' && !candidateLocked
   const isStaff = user?.role === 'interviewer' || user?.role === 'admin'
 
   return (
@@ -143,11 +149,11 @@ export default function ExamView() {
         <div className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
           <div>
             <div className="text-xs font-medium text-oj-fg-muted">Start Time</div>
-            <div className="mt-0.5 font-mono text-oj-fg">{fmtDate(exam.start_time)}</div>
+            <div className="mt-0.5 font-mono text-oj-fg">{formatDate(exam.start_time)}</div>
           </div>
           <div>
             <div className="text-xs font-medium text-oj-fg-muted">End Time</div>
-            <div className="mt-0.5 font-mono text-oj-fg">{fmtDate(exam.end_time)}</div>
+            <div className="mt-0.5 font-mono text-oj-fg">{formatDate(exam.end_time)}</div>
           </div>
           <div>
             <div className="text-xs font-medium text-oj-fg-muted">Problems</div>
@@ -164,6 +170,11 @@ export default function ExamView() {
           {status !== 'Active' && user?.role === 'candidate' && (
             <p className="mt-1 text-sm text-oj-fg-muted">
               {status === 'Upcoming' ? 'Submissions open at start time.' : "The exam has ended, so you can't open problems."}
+            </p>
+          )}
+          {candidateLocked && (
+            <p className="mt-1 text-sm font-medium text-red-700">
+              This exam is locked because the fullscreen policy was violated.
             </p>
           )}
         </div>
@@ -219,7 +230,7 @@ export default function ExamView() {
                         </Link>
                       ) : (
                         <span className="font-mono text-xs text-oj-fg-muted">
-                          {status === 'Upcoming' ? 'Not started' : 'Ended'}
+                          {candidateLocked ? 'Locked' : status === 'Upcoming' ? 'Not started' : 'Ended'}
                         </span>
                       )}
                     </td>

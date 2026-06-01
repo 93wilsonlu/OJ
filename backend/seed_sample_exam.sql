@@ -1,6 +1,10 @@
 -- Sample seed data for local development.
 -- Run from the repo root:
 --   docker compose exec -T postgres psql -U oj -d oj < backend/seed_sample_exam.sql
+--   docker compose exec -T api uv run python seed_testcases.py
+--
+-- The SQL seed creates users, problems, and assignments only. Test case files
+-- are stored in MinIO, so seed_testcases.py must run after this SQL file.
 --
 -- Candidate login password for all seeded candidates: Candidate123!
 
