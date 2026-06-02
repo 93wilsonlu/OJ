@@ -10,12 +10,15 @@ from app.models.user import User
 from app.schemas.exam import (
     ExamAssignmentCreate,
     ExamAssignmentOut,
+    ExamCandidateStateOut,
     ExamCreate,
     ExamOut,
     ExamProblemOut,
     ExamUpdate,
+    ProctoringEventCreate,
 )
 from app.services import exam as exam_service
+from app.services import proctoring as proctoring_service
 from app.services.auth import require_role
 
 router = APIRouter(prefix="/exams", tags=["exams"])
@@ -59,6 +62,37 @@ async def get_exam(
     exam: Exam = Depends(get_scoped_exam),
 ):
     return ExamOut.model_validate(exam)
+
+
+@router.get("/{exam_id}/candidate-state", response_model=ExamCandidateStateOut)
+async def get_candidate_state(
+    exam: Exam = Depends(get_scoped_exam),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "candidate")
+    state = await proctoring_service.get_candidate_state(
+        db, exam.exam_id, current_user.user_id
+    )
+    return ExamCandidateStateOut.model_validate(state)
+
+
+@router.post("/{exam_id}/proctoring-events", response_model=ExamCandidateStateOut)
+async def create_proctoring_event(
+    body: ProctoringEventCreate,
+    exam: Exam = Depends(get_scoped_exam),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "candidate")
+    state = await proctoring_service.register_event(
+        db,
+        exam.exam_id,
+        current_user.user_id,
+        body.event_type,
+        body.violating,
+    )
+    return ExamCandidateStateOut.model_validate(state)
 
 
 @router.patch("/{exam_id}", response_model=ExamOut)

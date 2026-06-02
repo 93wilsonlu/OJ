@@ -27,6 +27,7 @@ function makeSubmission(overrides: Partial<SubmissionListItem> = {}): Submission
       error_message: null,
       judged_at: new Date('2026-05-28T08:01:00Z').toISOString(),
     },
+    exam_title: 'Backend Interview',
     problem_title: 'Two Sum',
     candidate_name: 'Candidate',
     candidate_email: 'candidate@example.com',
@@ -77,7 +78,7 @@ describe('SubmissionsPage', () => {
     expect(screen.getAllByText('Accepted').length).toBeGreaterThan(0)
     expect(screen.getByText('Graph Walk')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByPlaceholderText('Search problem, submission, language...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search problem, exam, submission...'), {
       target: { value: 'graph' },
     })
 

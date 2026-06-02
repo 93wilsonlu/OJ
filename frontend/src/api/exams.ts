@@ -1,4 +1,12 @@
-import type { Exam, ExamAssignment, ExamCreate, ExamProblem, ExamUpdate } from '../types/exam'
+import type {
+  Exam,
+  ExamAssignment,
+  ExamCandidateState,
+  ExamCreate,
+  ExamProblem,
+  ExamUpdate,
+  ProctoringEventCreate,
+} from '../types/exam'
 import { throwOnApiError } from './errors'
 
 const BASE = '/api/v1'
@@ -91,4 +99,29 @@ export async function apiDeleteAssignment(
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnError(res)
+}
+
+export async function apiGetCandidateExamState(
+  token: string,
+  examId: string,
+): Promise<ExamCandidateState> {
+  const res = await fetch(`${BASE}/exams/${examId}/candidate-state`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+  return res.json()
+}
+
+export async function apiCreateProctoringEvent(
+  token: string,
+  examId: string,
+  body: ProctoringEventCreate,
+): Promise<ExamCandidateState> {
+  const res = await fetch(`${BASE}/exams/${examId}/proctoring-events`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  await throwOnError(res)
+  return res.json()
 }

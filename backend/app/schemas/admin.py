@@ -54,6 +54,10 @@ class ExamCandidateResultOut(BaseModel):
     candidate_id: uuid.UUID
     name: str
     email: str
+    is_active: bool
+    proctoring_status: str | None
+    locked_at: datetime | None
+    lock_reason: str | None
     problems: list[ExamProblemResultOut]
     total_score: float
 

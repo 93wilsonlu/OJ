@@ -3,33 +3,47 @@ Admin user-management service tests + router RBAC coverage.
 DB session is mocked; no Postgres required.
 """
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
-
-from app.models.judge_result import JudgeResult
-from app.models.submission import Submission
-from app.schemas.admin import AdminUserCreate, AdminUserUpdate
-from app.schemas.admin import AdminUserOut
 from sqlalchemy.exc import IntegrityError
 
+from app.models.exam_candidate_state import ExamCandidateState
+from app.models.judge_result import JudgeResult
+from app.models.submission import Submission
+from app.schemas.admin import AdminUserCreate, AdminUserOut, AdminUserUpdate
 from app.services.admin import (
     create_user,
     deactivate_user,
     delete_user,
     get_exam_results,
+    unlock_exam_candidate,
     update_user,
 )
 from tests.factories import (
-    client_for as _client_for,
     clear_overrides as _clear_overrides,
+)
+from tests.factories import (
+    client_for as _client_for,
+)
+from tests.factories import (
     make_assignment as _make_assignment,
+)
+from tests.factories import (
     make_exam as _make_exam,
+)
+from tests.factories import (
     make_problem as _make_problem,
+)
+from tests.factories import (
     make_submission as _make_submission,
+)
+from tests.factories import (
     make_user as _make_user,
+)
+from tests.factories import (
     mock_db as _mock_db,
 )
 
@@ -48,6 +62,25 @@ def _make_judge_result(submission: Submission, score: float, verdict: str) -> Ju
     result.log_storage_key = None
     result.judged_at = datetime.now(UTC)
     return result
+
+
+def _make_candidate_state(
+    exam_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    status: str = "locked",
+) -> ExamCandidateState:
+    state = ExamCandidateState()
+    state.state_id = uuid.uuid4()
+    state.exam_id = exam_id
+    state.candidate_id = candidate_id
+    state.status = status
+    state.warning_started_at = datetime.now(UTC) - timedelta(seconds=12)
+    state.locked_at = datetime.now(UTC) if status == "locked" else None
+    state.lock_reason = "warning_timeout" if status == "locked" else None
+    state.last_event_type = "warning_timeout"
+    state.last_seen_at = datetime.now(UTC) - timedelta(seconds=1)
+    state.created_at = datetime.now(UTC)
+    return state
 
 
 @pytest.mark.asyncio
@@ -197,8 +230,8 @@ async def test_get_exam_results_uses_best_score_per_problem():
 
     rows = MagicMock()
     rows.all.return_value = [
-        (assignment, candidate, problem, high_submission, high_result),
-        (assignment, candidate, problem, low_submission, low_result),
+        (assignment, candidate, problem, high_submission, high_result, None),
+        (assignment, candidate, problem, low_submission, low_result, None),
     ]
     db = _mock_db()
     db.get = AsyncMock(return_value=exam)
@@ -212,6 +245,79 @@ async def test_get_exam_results_uses_best_score_per_problem():
     assert results.candidates[0].problems[0].best_score == 100
     assert results.candidates[0].problems[0].submission_count == 2
     assert results.candidates[0].problems[0].latest_verdict == "Accepted"
+    assert results.candidates[0].is_active is True
+    assert results.candidates[0].proctoring_status is None
+
+
+@pytest.mark.asyncio
+async def test_get_exam_results_exposes_candidate_account_and_lock_state():
+    interviewer = _make_user("interviewer")
+    candidate = _make_user("candidate")
+    candidate.is_active = False
+    exam = _make_exam()
+    problem = _make_problem()
+    assignment = _make_assignment(exam.exam_id, candidate.user_id, problem.problem_id)
+    state = _make_candidate_state(exam.exam_id, candidate.user_id)
+
+    rows = MagicMock()
+    rows.all.return_value = [
+        (assignment, candidate, problem, None, None, state),
+    ]
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    db.execute = AsyncMock(return_value=rows)
+
+    results = await get_exam_results(db, interviewer, exam.exam_id)
+
+    result = results.candidates[0]
+    assert result.is_active is False
+    assert result.proctoring_status == "locked"
+    assert result.locked_at == state.locked_at
+    assert result.lock_reason == "warning_timeout"
+
+
+@pytest.mark.asyncio
+async def test_admin_can_unlock_exam_candidate():
+    admin = _make_user("admin")
+    exam_id = uuid.uuid4()
+    candidate_id = uuid.uuid4()
+    state = _make_candidate_state(exam_id, candidate_id)
+    original_last_seen = state.last_seen_at
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = state
+    db = _mock_db()
+    db.execute = AsyncMock(return_value=result_mock)
+
+    unlocked = await unlock_exam_candidate(db, admin, exam_id, candidate_id)
+
+    assert unlocked.status == "active"
+    assert unlocked.warning_started_at is None
+    assert unlocked.locked_at is None
+    assert unlocked.lock_reason is None
+    assert unlocked.last_event_type is None
+    assert unlocked.last_seen_at > original_last_seen
+    db.add.assert_called_once_with(state)
+    db.commit.assert_awaited_once()
+    db.refresh.assert_awaited_once_with(state)
+
+
+@pytest.mark.asyncio
+async def test_interviewer_can_unlock_exam_candidate():
+    interviewer = _make_user("interviewer")
+    exam_id = uuid.uuid4()
+    candidate_id = uuid.uuid4()
+    state = _make_candidate_state(exam_id, candidate_id)
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = state
+    db = _mock_db()
+    db.execute = AsyncMock(return_value=result_mock)
+
+    unlocked = await unlock_exam_candidate(db, interviewer, exam_id, candidate_id)
+
+    assert unlocked.status == "active"
+    db.commit.assert_awaited_once()
 
 
 def test_non_admin_gets_403_on_user_list():

@@ -45,6 +45,10 @@ export interface ExamCandidateResult {
   candidate_id: string
   name: string
   email: string
+  is_active: boolean
+  proctoring_status: string | null
+  locked_at: string | null
+  lock_reason: string | null
   problems: ExamProblemResult[]
   total_score: number
 }

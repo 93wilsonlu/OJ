@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, vi } from 'vitest'
+import { ApiError } from '../src/api/errors'
 import * as examsApi from '../src/api/exams'
 import * as useAuthModule from '../src/hooks/useAuth'
 import ExamView from '../src/pages/ExamView'
@@ -85,6 +86,16 @@ beforeEach(() => {
   mockAuth()
   vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue(makeExam())
   vi.spyOn(examsApi, 'apiListExamProblems').mockResolvedValue(problems)
+  vi.spyOn(examsApi, 'apiGetCandidateExamState').mockResolvedValue({
+    exam_id: 'exam-1',
+    candidate_id: 'candidate-1',
+    status: 'active',
+    warning_started_at: null,
+    locked_at: null,
+    lock_reason: null,
+    last_event_type: null,
+    last_seen_at: new Date().toISOString(),
+  })
 })
 
 describe('ExamView', () => {
@@ -116,5 +127,51 @@ describe('ExamView', () => {
     expect(screen.getByText('Upcoming')).toBeInTheDocument()
     expect(screen.getAllByText('Not started')).toHaveLength(2)
     expect(screen.queryByRole('link', { name: 'Solve' })).not.toBeInTheDocument()
+  })
+
+  test('blocks candidate problem actions when exam is locked', async () => {
+    vi.spyOn(examsApi, 'apiListExamProblems').mockResolvedValue([])
+    vi.spyOn(examsApi, 'apiGetCandidateExamState').mockResolvedValue({
+      exam_id: 'exam-1',
+      candidate_id: 'candidate-1',
+      status: 'locked',
+      warning_started_at: null,
+      locked_at: new Date().toISOString(),
+      lock_reason: 'warning_timeout',
+      last_event_type: 'warning_timeout',
+      last_seen_at: new Date().toISOString(),
+    })
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Sample Coding Interview' })
+    expect(screen.getByText(/fullscreen policy was violated/i)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Solve' })).not.toBeInTheDocument()
+  })
+
+  test('shows locked state instead of error when problem list is blocked by proctoring', async () => {
+    vi.spyOn(examsApi, 'apiListExamProblems').mockRejectedValue(
+      new ApiError(
+        403,
+        'Exam access locked due to proctoring violation',
+        'Exam access locked due to proctoring violation',
+      ),
+    )
+    vi.spyOn(examsApi, 'apiGetCandidateExamState').mockResolvedValue({
+      exam_id: 'exam-1',
+      candidate_id: 'candidate-1',
+      status: 'locked',
+      warning_started_at: null,
+      locked_at: new Date().toISOString(),
+      lock_reason: 'warning_timeout',
+      last_event_type: 'warning_timeout',
+      last_seen_at: new Date().toISOString(),
+    })
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Sample Coding Interview' })
+    expect(screen.getByText(/fullscreen policy was violated/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^Error:/i)).not.toBeInTheDocument()
   })
 })

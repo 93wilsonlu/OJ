@@ -1,14 +1,15 @@
 import Editor from '@monaco-editor/react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/errors'
 import { apiListExamProblems } from '../api/exams'
-import { apiCreateSubmission } from '../api/submissions'
+import { apiCreateSubmission, apiCreateSubmissionRun, apiGetSubmissionRun } from '../api/submissions'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
+import { useExamProctoring } from '../hooks/useExamProctoring'
 import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
 import type { ExamProblem } from '../types/exam'
-import type { SubmissionStatus } from '../types/submission'
+import type { SubmissionRunResult, SubmissionStatus } from '../types/submission'
 
 const LANGUAGE_OPTIONS: Record<string, { label: string; monaco: string; starter: string }> = {
   python3: {
@@ -194,9 +195,53 @@ function ResultMetric({ label, value }: { label: string; value: string }) {
   )
 }
 
+function ProctoringOverlay({
+  started,
+  violating,
+  remainingSeconds,
+  error,
+  onEnterFullscreen,
+}: {
+  started: boolean
+  violating: boolean
+  remainingSeconds: number
+  error: string | null
+  onEnterFullscreen: () => void
+}) {
+  if (started && !violating) return null
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-oj-bg/95 px-4">
+      <div className="max-w-md rounded-lg border border-oj-border bg-white p-6 text-center shadow-lg">
+        <h2 className="text-lg font-semibold text-oj-fg">
+          {started ? 'Return to fullscreen' : 'Fullscreen required'}
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-oj-fg-muted">
+          {started
+            ? `You must return to fullscreen and keep this tab focused. This exam will lock in ${remainingSeconds} seconds.`
+            : 'Enter fullscreen mode to start working in the exam editor.'}
+        </p>
+        {error && (
+          <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={onEnterFullscreen}
+          className="mt-5 rounded-md bg-oj-accent px-4 py-2 text-sm font-semibold text-white hover:bg-oj-accent-dim"
+        >
+          Enter fullscreen
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function ProblemEditor() {
   const { examId, problemId } = useParams<{ examId: string; problemId: string }>()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { getAccessToken } = useAuth()
 
   const [problem, setProblem] = useState<ExamProblem | null>(null)
@@ -207,11 +252,18 @@ export default function ProblemEditor() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submissionId, setSubmissionId] = useState<string | null>(null)
   const [appliedReuseId, setAppliedReuseId] = useState<string | null>(null)
+  const [customInput, setCustomInput] = useState('')
+  const [runId, setRunId] = useState<string | null>(null)
+  const [runResult, setRunResult] = useState<SubmissionRunResult | null>(null)
+  const [runError, setRunError] = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
 
   const { data: submissionData, error: pollError } = useSubmissionPoller(
     submissionId,
     getAccessToken,
   )
+  const proctoring = useExamProctoring(examId, getAccessToken)
+  const controlsDisabled = proctoring.locked || !proctoring.started || proctoring.violating
 
   const availableLanguages = useMemo(() => {
     if (!problem?.allowed_langs.length) return ['python3', 'cpp17']
@@ -272,6 +324,44 @@ export default function ProblemEditor() {
     localStorage.setItem(key, code)
   }, [code, examId, language, problemId])
 
+  useEffect(() => {
+    if (!runId) return
+    let cancelled = false
+    let timer: number | undefined
+
+    async function pollRun() {
+      try {
+        const token = await getAccessToken()
+        if (!token) throw new Error('Session expired. Please sign in again.')
+        const result = await apiGetSubmissionRun(token, runId!)
+        if (cancelled) return
+        setRunResult(result)
+        if (result.status === 'queued' || result.status === 'running') {
+          timer = window.setTimeout(pollRun, 1000)
+        } else {
+          setRunning(false)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setRunError(getErrorMessage(e, 'Failed to fetch run result'))
+          setRunning(false)
+        }
+      }
+    }
+
+    pollRun()
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [getAccessToken, runId])
+
+  useEffect(() => {
+    if (proctoring.locked && examId) {
+      navigate(`/exams/${examId}`, { replace: true })
+    }
+  }, [examId, navigate, proctoring.locked])
+
   function handleLanguageChange(nextLanguage: string) {
     const currentKey = draftKey(examId, problemId, language)
     if (currentKey) localStorage.setItem(currentKey, code)
@@ -280,7 +370,7 @@ export default function ProblemEditor() {
   }
 
   async function handleSubmit() {
-    if (!examId || !problemId) return
+    if (!examId || !problemId || controlsDisabled) return
     setSubmitting(true)
     setSubmitError(null)
     setSubmissionId(null)
@@ -302,14 +392,68 @@ export default function ProblemEditor() {
     }
   }
 
+  async function handleRun() {
+    if (!examId || !problemId || controlsDisabled) return
+    setRunning(true)
+    setRunError(null)
+    setRunResult(null)
+    setRunId(null)
+
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Session expired. Please sign in again.')
+      const run = await apiCreateSubmissionRun(token, {
+        exam_id: examId,
+        problem_id: problemId,
+        language,
+        code,
+        stdin: customInput,
+      })
+      setRunResult({
+        run_id: run.run_id,
+        status: run.status,
+        verdict: null,
+        stdout: '',
+        stderr: '',
+        stdout_truncated: false,
+        stderr_truncated: false,
+        execution_time: null,
+        memory_usage: null,
+        error_message: null,
+      })
+      setRunId(run.run_id)
+    } catch (e) {
+      setRunError(getErrorMessage(e, 'Run failed'))
+      setRunning(false)
+    }
+  }
+
   const judgeResult = submissionData?.judge_result
+  const runOutputText = runError
+    ? `Error: ${runError}`
+    : runResult
+      ? [
+          runResult.stdout ? `stdout:\n${runResult.stdout}` : '',
+          runResult.stderr ? `stderr:\n${runResult.stderr}` : '',
+          runResult.error_message && !runResult.stderr ? runResult.error_message : '',
+          runResult.stdout_truncated ? '[stdout truncated]' : '',
+          runResult.stderr_truncated ? '[stderr truncated]' : '',
+        ].filter(Boolean).join('\n\n') || (running ? 'Waiting for run result...' : 'No output.')
+      : running
+        ? 'Waiting for run result...'
+        : 'Run your code to see output here.'
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col bg-oj-bg">
+    <div className="relative flex h-[calc(100dvh-3.5rem)] flex-col bg-oj-bg">
+      <ProctoringOverlay
+        started={proctoring.started}
+        violating={proctoring.violating}
+        remainingSeconds={proctoring.remainingSeconds}
+        error={proctoring.error}
+        onEnterFullscreen={proctoring.enterFullscreen}
+      />
       <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-oj-border bg-oj-surface px-4 py-2">
-        <Link to={examId ? `/exams/${examId}` : '/exams'} className="text-xs text-oj-accent hover:underline">
-          Back to exam
-        </Link>
+        <span className="text-xs font-mono text-oj-fg-muted">Exam workspace</span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-oj-fg">
             {problem?.title ?? 'Loading problem...'}
@@ -337,8 +481,18 @@ export default function ProblemEditor() {
 
         <button
           type="button"
+          onClick={handleRun}
+          disabled={running || !problem || controlsDisabled}
+          className="rounded-md border border-oj-border bg-oj-surface2 px-4 py-1.5 text-sm font-semibold text-oj-fg
+                     transition-colors hover:border-oj-accent hover:text-oj-accent disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {running ? 'Running...' : 'Run'}
+        </button>
+
+        <button
+          type="button"
           onClick={handleSubmit}
-          disabled={submitting || !problem}
+          disabled={submitting || !problem || controlsDisabled}
           className="rounded-md bg-oj-accent px-4 py-1.5 text-sm font-semibold text-white
                      transition-colors hover:bg-oj-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -363,9 +517,12 @@ export default function ProblemEditor() {
               height="100%"
               language={monacoLanguage(language)}
               value={code}
-              onChange={(value) => setCode(value ?? '')}
+              onChange={(value) => {
+                if (!controlsDisabled) setCode(value ?? '')
+              }}
               theme="vs-dark"
               options={{
+                readOnly: controlsDisabled,
                 fontSize: 14,
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
@@ -377,6 +534,38 @@ export default function ProblemEditor() {
           </div>
 
           <footer className="shrink-0 border-t border-oj-border bg-oj-surface px-4 py-3">
+            <section className="mb-4 grid gap-3 lg:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-oj-fg-muted">
+                  Input
+                </span>
+                <textarea
+                  value={customInput}
+                  onChange={(event) => setCustomInput(event.target.value)}
+                  placeholder="Type stdin for this run..."
+                  className="h-28 w-full resize-y rounded border border-oj-border bg-oj-bg p-3 font-mono text-xs text-oj-fg
+                             placeholder:text-oj-fg-muted focus:outline-none focus:ring-1 focus:ring-oj-accent"
+                />
+              </label>
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-oj-fg-muted">
+                    Output
+                  </span>
+                  {runResult && (
+                    <span className="text-xs text-oj-fg-muted font-mono">
+                      {runResult.status}
+                      {runResult.verdict ? ` / ${runResult.verdict}` : ''}
+                      {runResult.execution_time !== null ? ` / ${runResult.execution_time} ms` : ''}
+                      {runResult.memory_usage !== null ? ` / ${runResult.memory_usage} KB` : ''}
+                    </span>
+                  )}
+                </div>
+                <pre className="h-28 overflow-auto rounded border border-oj-border bg-oj-bg p-3 font-mono text-xs text-oj-fg whitespace-pre-wrap">
+                  {runOutputText}
+                </pre>
+              </div>
+            </section>
             {submitError && (
               <div className="mb-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 {submitError}

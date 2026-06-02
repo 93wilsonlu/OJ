@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 import sys
 import threading
@@ -9,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 import redis
 import structlog
-from rq import Queue, Worker
+from rq import Queue, Worke
 from sqlalchemy import select
 
 from app.config import settings
@@ -24,8 +25,14 @@ from app.observability import (
     record_stuck_submissions,
     record_worker_heartbeat,
 )
-from app.services import storage
-from app.services.sandbox import cleanup_box, compile_code, init_box, run_test_case
+from app.services import custom_run, storage
+from app.services.sandbox import (
+    cleanup_box,
+    compile_code,
+    init_box,
+    run_custom_input,
+    run_test_case,
+)
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -51,6 +58,10 @@ def judge_submission(submission_id_str: str) -> None:
     loop = _get_worker_loop()
     loop.run_until_complete(mark_stuck_submissions())
     loop.run_until_complete(_judge_submission_async(uuid.UUID(submission_id_str)))
+
+
+def run_custom_submission(run_id_str: str) -> None:
+    asyncio.run(_run_custom_submission_async(uuid.UUID(run_id_str)))
 
 
 async def _judge_submission_async(submission_id: uuid.UUID) -> None:
@@ -202,6 +213,110 @@ async def monitor_stuck_submissions_loop() -> None:
         await asyncio.sleep(settings.WORKER_HEARTBEAT_INTERVAL_SECONDS)
 
 
+async def _run_custom_submission_async(run_id: uuid.UUID) -> None:
+    redis_client = custom_run.get_redis()
+    run_key = custom_run._run_key(run_id)
+    raw = redis_client.get(run_key)
+    if raw is None:
+        return
+
+    payload = json.loads(raw)
+    candidate_id = uuid.UUID(payload["candidate_id"])
+    active_key = custom_run._active_key(candidate_id)
+    payload["status"] = "running"
+    redis_client.setex(run_key, custom_run.RUN_RESULT_TTL_SECONDS, json.dumps(payload))
+
+    try:
+        async with AsyncSessionLocal() as db:
+            problem = await db.get(Problem, uuid.UUID(payload["problem_id"]))
+            if problem is None:
+                raise RuntimeError("Problem not found")
+
+            result = await _run_custom_judge(
+                payload["language"],
+                payload["code"],
+                payload["stdin"],
+                problem,
+            )
+
+        payload = {
+            "run_id": str(run_id),
+            "candidate_id": str(candidate_id),
+            "status": "completed",
+            **result,
+        }
+    except Exception as exc:
+        logger.error(f"Error running custom run {run_id}: {exc}")
+        logger.error(traceback.format_exc())
+        payload = {
+            "run_id": str(run_id),
+            "candidate_id": str(candidate_id),
+            "status": "failed",
+            "verdict": "System Error",
+            "stdout": "",
+            "stderr": "",
+            "stdout_truncated": False,
+            "stderr_truncated": False,
+            "execution_time": 0,
+            "memory_usage": 0,
+            "error_message": SYSTEM_ERROR_MESSAGE,
+        }
+    finally:
+        redis_client.delete(active_key)
+
+    redis_client.setex(run_key, custom_run.RUN_RESULT_TTL_SECONDS, json.dumps(payload))
+
+
+async def _run_custom_judge(
+    lang: str,
+    code: str,
+    stdin: str,
+    problem: Problem,
+) -> dict:
+    box_id = random.randint(0, 999)
+    box_dir = ""
+    try:
+        box_dir = init_box(box_id)
+        success, comp_err = compile_code(box_id, lang, code, box_dir)
+        if not success:
+            truncated = len(comp_err.encode("utf-8")) > 32 * 1024
+            comp_err = comp_err[: 32 * 1024]
+            return {
+                "verdict": "Compile Error",
+                "stdout": "",
+                "stderr": comp_err,
+                "stdout_truncated": False,
+                "stderr_truncated": truncated,
+                "execution_time": 0,
+                "memory_usage": 0,
+                "error_message": comp_err,
+            }
+
+        verdict, time_used, mem_used, stdout, stderr, stdout_truncated, stderr_truncated = (
+            run_custom_input(
+                box_id,
+                lang,
+                problem.time_limit,
+                problem.memory_limit,
+                stdin,
+                box_dir,
+            )
+        )
+        return {
+            "verdict": verdict,
+            "stdout": stdout,
+            "stderr": stderr,
+            "stdout_truncated": stdout_truncated,
+            "stderr_truncated": stderr_truncated,
+            "execution_time": time_used,
+            "memory_usage": mem_used,
+            "error_message": stderr if verdict != "OK" else None,
+        }
+    finally:
+        if box_dir:
+            cleanup_box(box_dir)
+
+
 async def _run_judge(lang: str, code: str, problem: Problem, test_cases: list[TestCase]) -> tuple:
     # return verdict, score, max_time, max_mem, error_msg, passed_count, total_count
     box_id = random.randint(0, 999)
@@ -246,7 +361,7 @@ async def _run_judge(lang: str, code: str, problem: Problem, test_cases: list[Te
             )
 
             verdict, t_used, m_used = run_test_case(
-                box_id, lang, time_limit, mem_limit, input_data, expected_output, box_dir
+                box_id, lang, time_limit, mem_limit, input_data, expected_output, box_di
             )
 
             max_time = max(max_time, t_used)

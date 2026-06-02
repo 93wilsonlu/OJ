@@ -93,3 +93,15 @@ export async function apiGetExamResults(token: string, examId: string): Promise<
   await throwOnError(res)
   return res.json()
 }
+
+export async function apiUnlockExamCandidate(
+  token: string,
+  examId: string,
+  candidateId: string,
+): Promise<void> {
+  const res = await fetch(`${BASE}/admin/exams/${examId}/candidates/${candidateId}/unlock`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+}

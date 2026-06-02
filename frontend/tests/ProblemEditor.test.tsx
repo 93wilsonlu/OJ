@@ -42,6 +42,38 @@ const problem: ExamProblem = {
   allowed_langs: ['cpp17'],
 }
 
+let fullscreenElement: Element | null = null
+
+function mockFullscreenApis() {
+  fullscreenElement = null
+  Object.defineProperty(document, 'fullscreenElement', {
+    configurable: true,
+    get: () => fullscreenElement,
+  })
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => 'visible',
+  })
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+  Object.defineProperty(document.documentElement, 'requestFullscreen', {
+    configurable: true,
+    value: vi.fn().mockImplementation(async () => {
+      fullscreenElement = document.documentElement
+      document.dispatchEvent(new Event('fullscreenchange'))
+    }),
+  })
+}
+
+async function enterFullscreen() {
+  fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen' }))
+  await waitFor(() => {
+    expect(examsApi.apiCreateProctoringEvent).toHaveBeenCalledWith('token', 'exam-1', {
+      event_type: 'fullscreen_restored',
+      violating: false,
+    })
+  })
+}
+
 function mockAuth() {
   vi.spyOn(useAuthModule, 'useAuth').mockReturnValue({
     user: {
@@ -70,8 +102,29 @@ function renderPage(path = '/exams/exam-1/problems/problem-1') {
 beforeEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
+  mockFullscreenApis()
   mockAuth()
   vi.spyOn(examsApi, 'apiListExamProblems').mockResolvedValue([problem])
+  vi.spyOn(examsApi, 'apiGetCandidateExamState').mockResolvedValue({
+    exam_id: 'exam-1',
+    candidate_id: 'candidate-1',
+    status: 'active',
+    warning_started_at: null,
+    locked_at: null,
+    lock_reason: null,
+    last_event_type: null,
+    last_seen_at: new Date().toISOString(),
+  })
+  vi.spyOn(examsApi, 'apiCreateProctoringEvent').mockResolvedValue({
+    exam_id: 'exam-1',
+    candidate_id: 'candidate-1',
+    status: 'active',
+    warning_started_at: null,
+    locked_at: null,
+    lock_reason: null,
+    last_event_type: 'fullscreen_restored',
+    last_seen_at: new Date().toISOString(),
+  })
   vi.spyOn(submissionsApi, 'apiCreateSubmission').mockResolvedValue({
     submission_id: 'submission-1',
     exam_id: 'exam-1',
@@ -81,10 +134,34 @@ beforeEach(() => {
     status: 'pending',
     submitted_at: new Date().toISOString(),
   })
+  vi.spyOn(submissionsApi, 'apiCreateSubmissionRun').mockResolvedValue({
+    run_id: 'run-1',
+    status: 'queued',
+  })
+  vi.spyOn(submissionsApi, 'apiGetSubmissionRun').mockResolvedValue({
+    run_id: 'run-1',
+    status: 'completed',
+    verdict: 'OK',
+    stdout: 'hello\n',
+    stderr: '',
+    stdout_truncated: false,
+    stderr_truncated: false,
+    execution_time: 12,
+    memory_usage: 2048,
+    error_message: null,
+  })
   vi.mocked(useSubmissionPoller).mockReturnValue({ data: null, error: null })
 })
 
 describe('ProblemEditor', () => {
+  test('requires fullscreen before candidate can work', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Fullscreen required' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
+  })
+
   test('renders the solving workspace without candidate difficulty labels', async () => {
     renderPage()
 
@@ -100,6 +177,7 @@ describe('ProblemEditor', () => {
     renderPage()
 
     await screen.findByRole('heading', { name: 'Two Sum' })
+    await enterFullscreen()
     const languageSelect = screen.getByRole('combobox', { name: 'Language' })
     await waitFor(() => expect(languageSelect).toHaveValue('cpp17'))
 
@@ -135,5 +213,30 @@ describe('ProblemEditor', () => {
     const editor = screen.getByLabelText('Code editor')
     await waitFor(() => expect(editor).toHaveValue('int reused() { return 42; }'))
     expect(screen.getByRole('combobox', { name: 'Language' })).toHaveValue('cpp17')
+  })
+
+  test('runs editor code with custom stdin and shows output', async () => {
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Two Sum' })
+    await enterFullscreen()
+    fireEvent.change(screen.getByLabelText('Code editor'), {
+      target: { value: 'int main() { return 0; }' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('Type stdin for this run...'), {
+      target: { value: '4 9\n2 7 11 15' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    await waitFor(() => {
+      expect(submissionsApi.apiCreateSubmissionRun).toHaveBeenCalledWith('token', {
+        exam_id: 'exam-1',
+        problem_id: 'problem-1',
+        language: 'cpp17',
+        code: 'int main() { return 0; }',
+        stdin: '4 9\n2 7 11 15',
+      })
+    })
+    expect(await screen.findByText(/hello/)).toBeInTheDocument()
   })
 })

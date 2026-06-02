@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { apiGetExamResults } from '../api/admin'
+import { apiGetExamResults, apiUnlockExamCandidate } from '../api/admin'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import type { ExamProblemResult, ExamResults } from '../types/admin'
@@ -31,25 +31,50 @@ function problemMap(problems: ExamProblemResult[]) {
   return new Map(problems.map((problem) => [problem.problem_id, problem]))
 }
 
+function formatLockReason(reason: string | null) {
+  return reason ? reason.replace(/_/g, ' ') : 'Locked'
+}
+
 export default function ExamResultsPage() {
   const { examId } = useParams<{ examId: string }>()
   const { getAccessToken } = useAuth()
   const [results, setResults] = useState<ExamResults | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [unlockingId, setUnlockingId] = useState<string | null>(null)
+
+  const loadResults = useCallback(async () => {
+    if (!examId) return
+    const token = await getAccessToken()
+    if (!token) return
+    const data = await apiGetExamResults(token, examId)
+    setResults(data)
+  }, [examId, getAccessToken])
 
   useEffect(() => {
     if (!examId) return
-    getAccessToken().then((token) => {
-      if (!token) return
-      apiGetExamResults(token, examId)
-        .then(setResults)
-        .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load results'))
-        .finally(() => setLoading(false))
-    })
-  }, [examId, getAccessToken])
+    loadResults()
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load results'))
+      .finally(() => setLoading(false))
+  }, [examId, loadResults])
 
   const columns = useMemo(() => problemColumns(results), [results])
+
+  async function handleUnlock(candidateId: string) {
+    if (!examId || unlockingId) return
+    setError(null)
+    setUnlockingId(candidateId)
+    try {
+      const token = await getAccessToken()
+      if (!token) return
+      await apiUnlockExamCandidate(token, examId, candidateId)
+      await loadResults()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to unlock candidate')
+    } finally {
+      setUnlockingId(null)
+    }
+  }
 
   if (loading) {
     return <div className="p-8 text-oj-fg-muted text-sm font-mono">Loading results...</div>
@@ -87,6 +112,9 @@ export default function ExamResultsPage() {
                 <th className="px-4 py-3 text-left font-semibold text-oj-fg-muted">
                   Candidate
                 </th>
+                <th className="px-4 py-3 text-left font-semibold text-oj-fg-muted">
+                  Status
+                </th>
                 {columns.map((problem) => (
                   <th
                     key={problem.problem_id}
@@ -109,6 +137,37 @@ export default function ExamResultsPage() {
                       <div className="font-medium text-oj-fg">{candidate.name}</div>
                       <div className="text-xs text-oj-fg-muted font-mono mt-0.5">
                         {candidate.email}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col items-start gap-2">
+                        {!candidate.is_active && (
+                          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700">
+                            Inactive
+                          </span>
+                        )}
+                        {candidate.proctoring_status === 'locked' ? (
+                          <>
+                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                              Locked
+                            </span>
+                            <div className="text-xs text-oj-fg-muted">
+                              {formatLockReason(candidate.lock_reason)}
+                            </div>
+                            <button
+                              type="button"
+                              className="rounded border border-oj-border px-2 py-1 text-xs font-medium text-oj-fg hover:bg-oj-surface2 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={unlockingId === candidate.candidate_id}
+                              onClick={() => handleUnlock(candidate.candidate_id)}
+                            >
+                              {unlockingId === candidate.candidate_id ? 'Unlocking...' : 'Unlock'}
+                            </button>
+                          </>
+                        ) : candidate.is_active ? (
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                            Active
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     {columns.map((column) => {

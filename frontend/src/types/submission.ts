@@ -29,7 +29,26 @@ export interface SubmissionDetail extends Submission {
 }
 
 export interface SubmissionListItem extends SubmissionDetail {
+  exam_title: string
   problem_title: string
   candidate_name: string
   candidate_email: string
+}
+
+export interface SubmissionRunQueued {
+  run_id: string
+  status: string
+}
+
+export interface SubmissionRunResult {
+  run_id: string
+  status: string
+  verdict: string | null
+  stdout: string
+  stderr: string
+  stdout_truncated: boolean
+  stderr_truncated: boolean
+  execution_time: number | null
+  memory_usage: number | null
+  error_message: string | null
 }

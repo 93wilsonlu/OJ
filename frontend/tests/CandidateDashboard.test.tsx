@@ -69,6 +69,7 @@ function makeSubmission(): SubmissionListItem {
       error_message: null,
       judged_at: isoFromNow(-9),
     },
+    exam_title: 'Active Algorithms',
     problem_title: 'Two Sum',
     candidate_name: 'Candidate',
     candidate_email: 'candidate@example.com',

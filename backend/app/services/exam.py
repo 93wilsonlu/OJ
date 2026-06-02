@@ -8,10 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.exam_candidate_state import ExamCandidateState
 from app.models.judge_result import JudgeResult
 from app.models.problem import Problem
 from app.models.submission import Submission
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
+from app.services import proctoring as proctoring_service
 
 
 @dataclass
@@ -122,6 +124,7 @@ async def delete_exam(db: AsyncSession, exam: Exam) -> None:
     sub_ids = select(Submission.submission_id).where(Submission.exam_id == eid)
     await db.execute(delete(JudgeResult).where(JudgeResult.submission_id.in_(sub_ids)))
     await db.execute(delete(Submission).where(Submission.exam_id == eid))
+    await db.execute(delete(ExamCandidateState).where(ExamCandidateState.exam_id == eid))
     await db.execute(delete(ExamAssignment).where(ExamAssignment.exam_id == eid))
     await db.execute(delete(Exam).where(Exam.exam_id == eid))
     await db.commit()
@@ -130,6 +133,9 @@ async def delete_exam(db: AsyncSession, exam: Exam) -> None:
 async def list_exam_problems_for_user(
     db: AsyncSession, exam_id: uuid.UUID, user_id: uuid.UUID, role: str
 ) -> list[ExamProblemRow]:
+    if role == "candidate":
+        await proctoring_service.ensure_candidate_not_locked(db, exam_id, user_id)
+
     stmt = (
         select(ExamAssignment, Problem)
         .join(Problem, ExamAssignment.problem_id == Problem.problem_id)

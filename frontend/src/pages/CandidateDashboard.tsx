@@ -7,6 +7,7 @@ import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import type { Exam } from '../types/exam'
 import type { SubmissionListItem } from '../types/submission'
+import { formatDate } from '../utils/format'
 
 type ExamStatus = 'Active' | 'Upcoming' | 'Ended'
 type StatusFilter = 'all' | ExamStatus
@@ -29,15 +30,6 @@ function examStatus(exam: Exam, now: Date): ExamStatus {
   if (now < start) return 'Upcoming'
   if (now > end) return 'Ended'
   return 'Active'
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 function latestSubmissionByExam(submissions: SubmissionListItem[]) {
@@ -260,17 +252,17 @@ export default function CandidateDashboard() {
                       {problemCounts[exam.exam_id] ?? '-'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-oj-fg-muted">
-                      {fmtDate(exam.start_time)}
+                      {formatDate(exam.start_time)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-oj-fg-muted">
-                      {fmtDate(exam.end_time)}
+                      {formatDate(exam.end_time)}
                     </td>
                     <td className="min-w-[150px] px-4 py-3">
                       {latest ? (
                         <div className="flex flex-col items-start gap-1">
                           <VerdictBadge verdict={latestVerdict} />
                           <span className="font-mono text-xs text-oj-fg-muted">
-                            {fmtDate(latest.submitted_at)}
+                            {formatDate(latest.submitted_at)}
                           </span>
                         </div>
                       ) : (

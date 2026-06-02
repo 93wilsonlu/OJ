@@ -3,20 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { apiDeleteAdminUser, apiListAdminUsers } from '../api/admin'
 import { useAuth } from '../hooks/useAuth'
 import type { AdminUser, AdminUserRole } from '../types/admin'
+import { formatDateOnly } from '../utils/format'
 
 const ROLES: AdminUserRole[] = ['admin', 'interviewer', 'problem_admin', 'candidate']
 const PAGE_SIZE = 10
 
 const inputCls = `w-full bg-oj-surface2 border border-oj-border rounded px-3 py-1.5
                   text-sm text-oj-fg focus:outline-none focus:ring-1 focus:ring-oj-accent`
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
 
 function SearchIcon() {
   return (
@@ -54,7 +47,7 @@ function UserRow({
           {user.is_active ? 'Active' : 'Inactive'}
         </span>
       </td>
-      <td className="px-4 py-3 text-oj-fg-muted font-mono text-xs">{formatDate(user.created_at)}</td>
+      <td className="px-4 py-3 text-oj-fg-muted font-mono text-xs">{formatDateOnly(user.created_at)}</td>
       <td className="px-4 py-3">
         <div className="flex justify-end gap-2">
           <button

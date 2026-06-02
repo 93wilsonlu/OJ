@@ -42,3 +42,19 @@ export interface ExamProblem {
   memory_limit: number
   allowed_langs: string[]
 }
+
+export interface ExamCandidateState {
+  exam_id: string
+  candidate_id: string
+  status: 'active' | 'locked'
+  warning_started_at: string | null
+  locked_at: string | null
+  lock_reason: string | null
+  last_event_type: string | null
+  last_seen_at: string
+}
+
+export interface ProctoringEventCreate {
+  event_type: string
+  violating: boolean
+}

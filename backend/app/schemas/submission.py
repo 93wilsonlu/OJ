@@ -15,6 +15,10 @@ class SubmissionCreate(BaseModel):
     code: str = Field(max_length=MAX_CODE_CHARS)
 
 
+class SubmissionRunCreate(SubmissionCreate):
+    stdin: str = Field(default="", max_length=64 * 1024)
+
+
 class SubmissionOut(BaseModel):
     submission_id: uuid.UUID
     exam_id: uuid.UUID
@@ -48,6 +52,25 @@ class SubmissionDetailOut(SubmissionOut):
 
 
 class SubmissionListItemOut(SubmissionDetailOut):
+    exam_title: str
     problem_title: str
     candidate_name: str
     candidate_email: str
+
+
+class SubmissionRunQueuedOut(BaseModel):
+    run_id: uuid.UUID
+    status: str
+
+
+class SubmissionRunResultOut(BaseModel):
+    run_id: uuid.UUID
+    status: str
+    verdict: str | None = None
+    stdout: str = ""
+    stderr: str = ""
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
+    execution_time: int | None = None
+    memory_usage: int | None = None
+    error_message: str | None = None
