@@ -3,16 +3,20 @@ from contextlib import asynccontextmanager
 
 import anyio
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST
 
 from app.config import settings
+from app.logging import configure_logging
+from app.observability import prometheus_response_body, readiness_report
 from app.routers import admin as admin_router
 from app.routers import auth as auth_router
 from app.routers import exam as exam_router
 from app.routers import problem as problem_router
 from app.routers import submission as submission_router
 
+configure_logging()
 log = structlog.get_logger()
 
 if settings.SECRET_KEY == "changeme":
@@ -65,3 +69,24 @@ app.include_router(submission_router.router, prefix="/api/v1")
 @app.get("/api/v1/healthz")
 async def healthz():
     return {"status": "ok"}
+
+
+@app.get("/health")
+@app.get("/api/v1/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+@app.get("/api/v1/ready")
+async def ready(response: Response):
+    report = await readiness_report()
+    if report["status"] != "ready":
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return report
+
+
+@app.get("/metrics")
+async def metrics():
+    body = await prometheus_response_body()
+    return Response(content=body, media_type=CONTENT_TYPE_LATEST)

@@ -13,4 +13,4 @@ RUN uv sync --no-dev
 COPY app/ app/
 COPY worker.py .
 
-CMD ["sh", "-c", "uv run rq worker judge --with-scheduler --url $REDIS_URL"]
+CMD ["sh", "-c", "uv run python worker.py"]
