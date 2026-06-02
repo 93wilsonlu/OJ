@@ -6,6 +6,15 @@ This platform supports multi-tenant roles (Admin, Problem Admin, Interviewer, Ca
 
 ---
 
+## Cloud Demo
+
+The current GCP VM demo is available at [http://104.199.188.64](http://104.199.188.64).
+Deployment notes, verification steps, and known production-hardening follow-ups
+are documented in [DEPLOYMENT.md](DEPLOYMENT.md). The GCP architecture rationale
+is documented in [docs/gcp-architecture.md](docs/gcp-architecture.md).
+
+---
+
 ## 🏗️ System Architecture
 
 ```mermaid
@@ -46,7 +55,7 @@ To boot this system locally, ensure you have **Docker** and **Docker Compose** i
 ### 1. Configure Environment Variables
 Copy the template configuration file to a live `.env` file:
 ```bash
-cp ".env copy.example" .env
+cp .env.example .env
 ```
 Ensure you inspect `.env` to configure your initial administrator user and storage keys:
 ```ini
