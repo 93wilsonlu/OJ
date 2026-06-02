@@ -20,5 +20,8 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = ""
     ADMIN_NAME: str = "System Admin"
 
+    STUCK_SUBMISSION_SECONDS: int = 300
+    WORKER_HEARTBEAT_INTERVAL_SECONDS: int = 15
+
 
 settings = Settings()

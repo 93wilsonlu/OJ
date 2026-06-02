@@ -81,6 +81,23 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
+  judge-monitor:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_SECURE: "false"
+    command: ["sh", "-c", "uv run python worker.py monitor"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   nginx:
     build:
       context: ./frontend
@@ -92,6 +109,32 @@ services:
     depends_on:
       - api
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
   minio_data:
+  prometheus_data:
+  grafana_data:
