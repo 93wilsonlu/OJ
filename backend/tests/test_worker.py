@@ -45,6 +45,39 @@ async def test_run_judge_testcase_load_failure_returns_generic_message(
 
 
 @pytest.mark.asyncio
+@patch("worker.cleanup_box")
+@patch("worker.run_test_case")
+@patch("worker.compile_code")
+@patch("worker.init_box")
+@patch("worker.storage.get_object_text")
+async def test_run_judge_success_passes_box_dir_and_cleans_up(
+    mock_get_text, mock_init, mock_compile, mock_run_tc, mock_cleanup
+):
+    box_dir = "/box/42"
+    mock_init.return_value = box_dir
+    mock_compile.return_value = (True, "")
+    mock_get_text.side_effect = ["1 2\n", "3\n"]
+    mock_run_tc.return_value = ("Accepted", 0.012, 2048)
+
+    problem = MagicMock(time_limit=1, memory_limit=256)
+    problem.problem_id = uuid.uuid4()
+    tc = MagicMock(
+        input_data_key="in",
+        expected_output_key="out",
+        time_limit_override=None,
+        memory_limit_override=None,
+        score_weight=100,
+    )
+
+    result = await worker._run_judge("python3", "code", problem, [tc])
+
+    assert result == ("Accepted", 100.0, 0.012, 2, None, 1, 1)
+    mock_run_tc.assert_called_once()
+    assert mock_run_tc.call_args.args[-1] == box_dir
+    mock_cleanup.assert_called_once_with(box_dir)
+
+
+@pytest.mark.asyncio
 @patch("worker._run_judge", new_callable=AsyncMock)
 @patch("worker.storage.get_object_text")
 @patch("worker.AsyncSessionLocal")

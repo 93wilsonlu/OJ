@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 import redis
 import structlog
-from rq import Queue, Worke
+from rq import Queue, Worker
 from sqlalchemy import select
 
 from app.config import settings
@@ -361,7 +361,7 @@ async def _run_judge(lang: str, code: str, problem: Problem, test_cases: list[Te
             )
 
             verdict, t_used, m_used = run_test_case(
-                box_id, lang, time_limit, mem_limit, input_data, expected_output, box_di
+                box_id, lang, time_limit, mem_limit, input_data, expected_output, box_dir
             )
 
             max_time = max(max_time, t_used)
