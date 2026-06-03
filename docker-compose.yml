@@ -84,7 +84,7 @@ services:
   judge-monitor:
     build:
       context: ./backend
-      dockerfile: Dockerfile.worke
+      dockerfile: Dockerfile.worker
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
@@ -101,7 +101,7 @@ services:
   run-worker:
     build:
       context: ./backend
-      dockerfile: Dockerfile.worke
+      dockerfile: Dockerfile.worker
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
