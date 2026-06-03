@@ -67,10 +67,7 @@ function mockFullscreenApis() {
 async function enterFullscreen() {
   fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen' }))
   await waitFor(() => {
-    expect(examsApi.apiCreateProctoringEvent).toHaveBeenCalledWith('token', 'exam-1', {
-      event_type: 'fullscreen_restored',
-      violating: false,
-    })
+    expect(examsApi.apiFullscreenReturn).toHaveBeenCalledWith('token', 'exam-1')
   })
 }
 
@@ -94,6 +91,8 @@ function renderPage(path = '/exams/exam-1/problems/problem-1') {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/exams/:examId/problems/:problemId" element={<ProblemEditor />} />
+        <Route path="/exams/:examId/submissions" element={<div>Submissions</div>} />
+        <Route path="/exams/:examId/submissions/:submissionId" element={<div>Submission detail</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -105,26 +104,40 @@ beforeEach(() => {
   mockFullscreenApis()
   mockAuth()
   vi.spyOn(examsApi, 'apiListExamProblems').mockResolvedValue([problem])
-  vi.spyOn(examsApi, 'apiGetCandidateExamState').mockResolvedValue({
+  vi.spyOn(examsApi, 'apiGetExamAccess').mockResolvedValue({
+    exam_id: 'exam-1',
+    status_label: 'in_progress',
+    can_view_exam: true,
+    can_view_problems: true,
+    can_start: false,
+    can_solve: true,
+    can_submit: true,
+    can_edit_submission: true,
+    can_view_submissions: true,
+    requires_fullscreen: true,
+    attempt_started_at: new Date().toISOString(),
+    attempt_deadline_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+    attempt_ended_at: null,
+  })
+  const attempt = {
+    attempt_id: 'attempt-1',
     exam_id: 'exam-1',
     candidate_id: 'candidate-1',
-    status: 'active',
-    warning_started_at: null,
-    locked_at: null,
-    lock_reason: null,
-    last_event_type: null,
-    last_seen_at: new Date().toISOString(),
+    started_at: new Date().toISOString(),
+    deadline_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+    ended_at: null,
+    status: 'in_progress' as const,
+    fullscreen_exit_started_at: null,
+    force_end_at: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+  vi.spyOn(examsApi, 'apiFullscreenExit').mockResolvedValue({
+    ...attempt,
+    fullscreen_exit_started_at: new Date().toISOString(),
+    force_end_at: new Date(Date.now() + 5000).toISOString(),
   })
-  vi.spyOn(examsApi, 'apiCreateProctoringEvent').mockResolvedValue({
-    exam_id: 'exam-1',
-    candidate_id: 'candidate-1',
-    status: 'active',
-    warning_started_at: null,
-    locked_at: null,
-    lock_reason: null,
-    last_event_type: 'fullscreen_restored',
-    last_seen_at: new Date().toISOString(),
-  })
+  vi.spyOn(examsApi, 'apiFullscreenReturn').mockResolvedValue(attempt)
   vi.spyOn(submissionsApi, 'apiCreateSubmission').mockResolvedValue({
     submission_id: 'submission-1',
     exam_id: 'exam-1',
@@ -196,6 +209,17 @@ describe('ProblemEditor', () => {
     })
   })
 
+  test('links to exam-scoped submissions while solving', async () => {
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    expect(screen.getByRole('link', { name: 'Submissions' })).toHaveAttribute(
+      'href',
+      '/exams/exam-1/submissions',
+    )
+  })
+
   test('loads reusable submission code into the editor', async () => {
     sessionStorage.setItem(
       'submission-reuse:submission-1',
@@ -238,5 +262,31 @@ describe('ProblemEditor', () => {
       })
     })
     expect(await screen.findByText(/hello/)).toBeInTheDocument()
+  })
+
+  test('links to submitted result details inside the locked exam scope', async () => {
+    vi.mocked(useSubmissionPoller).mockReturnValue({
+      data: {
+        submission_id: 'submission-1',
+        exam_id: 'exam-1',
+        problem_id: 'problem-1',
+        candidate_id: 'candidate-1',
+        language: 'cpp17',
+        status: 'completed',
+        submitted_at: new Date().toISOString(),
+        judge_result: null,
+        source_code: 'int main() { return 0; }',
+      },
+      error: null,
+    })
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Two Sum' })
+
+    expect(screen.getByRole('link', { name: 'View submission' })).toHaveAttribute(
+      'href',
+      '/exams/exam-1/submissions/submission-1',
+    )
   })
 })

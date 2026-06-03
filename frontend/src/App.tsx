@@ -108,6 +108,22 @@ export default function App() {
             }
           />
           <Route
+            path="/exams/:examId/submissions"
+            element={
+              <Protected roles={['candidate']}>
+                <SubmissionsPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/exams/:examId/submissions/:submissionId"
+            element={
+              <Protected roles={['candidate']}>
+                <SubmissionStatus />
+              </Protected>
+            }
+          />
+          <Route
             path="/submissions"
             element={
               <Protected roles={['candidate', 'interviewer', 'problem_admin', 'admin']}>

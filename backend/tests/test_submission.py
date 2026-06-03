@@ -34,7 +34,13 @@ from tests.factories import (
     make_assignment as _make_assignment,
 )
 from tests.factories import (
+    make_attempt as _make_attempt,
+)
+from tests.factories import (
     make_exam as _make_exam,
+)
+from tests.factories import (
+    make_problem as _make_problem,
 )
 from tests.factories import (
     make_submission as _make_submission,
@@ -218,6 +224,121 @@ async def test_create_submission_locked_candidate_raises_403(mock_put, mock_enqu
 
     assert exc.value.status_code == 403
     assert "proctoring" in exc.value.detail.lower()
+    mock_put.assert_not_called()
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("app.services.submission.queue_service.enqueue_submission")
+@patch("app.services.submission.storage.put_object")
+async def test_create_submission_anti_cheat_without_attempt_raises_403(
+    mock_put, mock_enqueue
+):
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    candidate_id = uuid.uuid4()
+    problem_id = uuid.uuid4()
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    no_attempt_result = MagicMock()
+    no_attempt_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=no_attempt_result)
+
+    data = SubmissionCreate(
+        exam_id=exam.exam_id,
+        problem_id=problem_id,
+        language="python3",
+        code="print('hello')",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await create_submission(db, data, candidate_id, "127.0.0.1")
+
+    assert exc.value.status_code == 403
+    assert "started" in exc.value.detail.lower()
+    mock_put.assert_not_called()
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("app.services.submission.queue_service.enqueue_submission")
+@patch("app.services.submission.storage.put_object")
+async def test_create_submission_anti_cheat_active_attempt_success(
+    mock_put, mock_enqueue
+):
+    now = datetime.now(UTC)
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    candidate_id = uuid.uuid4()
+    problem_id = uuid.uuid4()
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=now + timedelta(minutes=10),
+    )
+    assignment = _make_assignment(exam.exam_id, candidate_id, problem_id)
+
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    attempt_result = MagicMock()
+    attempt_result.scalar_one_or_none.return_value = attempt
+    assignment_result = MagicMock()
+    assignment_result.scalar_one_or_none.return_value = assignment
+    no_result = MagicMock()
+    no_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(
+        side_effect=[attempt_result, assignment_result, no_result, no_result]
+    )
+
+    data = SubmissionCreate(
+        exam_id=exam.exam_id,
+        problem_id=problem_id,
+        language="python3",
+        code="print('hello')",
+    )
+
+    submission = await create_submission(db, data, candidate_id, "127.0.0.1")
+
+    assert submission.status == "pending"
+    mock_put.assert_called_once()
+    mock_enqueue.assert_called_once_with(submission.submission_id)
+
+
+@pytest.mark.asyncio
+@patch("app.services.submission.queue_service.enqueue_submission")
+@patch("app.services.submission.storage.put_object")
+async def test_create_submission_after_fullscreen_grace_force_ends_attempt(
+    mock_put, mock_enqueue
+):
+    force_end_at = datetime.now(UTC) - timedelta(seconds=1)
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    candidate_id = uuid.uuid4()
+    problem_id = uuid.uuid4()
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=force_end_at + timedelta(minutes=10),
+    )
+    attempt.fullscreen_exit_started_at = force_end_at - timedelta(seconds=5)
+    attempt.force_end_at = force_end_at
+
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    attempt_result = MagicMock()
+    attempt_result.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=attempt_result)
+
+    data = SubmissionCreate(
+        exam_id=exam.exam_id,
+        problem_id=problem_id,
+        language="python3",
+        code="print('hello')",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await create_submission(db, data, candidate_id, "127.0.0.1")
+
+    assert exc.value.status_code == 403
+    assert attempt.status == "force_ended"
+    assert attempt.ended_at == force_end_at
     mock_put.assert_not_called()
     mock_enqueue.assert_not_called()
 
@@ -435,6 +556,37 @@ class _FakeRedis:
 
     def delete(self, key):
         self.values.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_candidate_cannot_create_custom_run_anti_cheat_without_attempt():
+    candidate = _make_user("candidate")
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    problem = _make_problem()
+    assignment = _make_assignment(exam.exam_id, candidate.user_id, problem.problem_id)
+
+    db = _mock_db()
+    db.get = AsyncMock(side_effect=[exam, problem])
+    assignment_result = MagicMock()
+    assignment_result.scalar_one_or_none.return_value = assignment
+    no_attempt_result = MagicMock()
+    no_attempt_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(side_effect=[assignment_result, no_attempt_result])
+
+    with pytest.raises(HTTPException) as exc:
+        await custom_run.create_run(
+            db,
+            candidate,
+            SubmissionRunCreate(
+                exam_id=exam.exam_id,
+                problem_id=problem.problem_id,
+                language="python3",
+                code="print(input())",
+                stdin="hello",
+            ),
+        )
+
+    assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio

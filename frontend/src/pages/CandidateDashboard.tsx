@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { getErrorMessage } from '../api/errors'
-import { apiListExamProblems, apiListExams } from '../api/exams'
+import { Link, useNavigate } from 'react-router-dom'
+import { ApiError, getErrorMessage } from '../api/errors'
+import { apiGetExamAccess, apiListExamProblems, apiListExams, apiStartExam } from '../api/exams'
 import { apiListSubmissions } from '../api/submissions'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
-import type { Exam } from '../types/exam'
+import type { Exam, ExamAccess } from '../types/exam'
 import type { SubmissionListItem } from '../types/submission'
+import { setActiveExamLock } from '../utils/activeExamLock'
 import { formatDate } from '../utils/format'
 
 type ExamStatus = 'Active' | 'Upcoming' | 'Ended'
@@ -42,16 +43,26 @@ function latestSubmissionByExam(submissions: SubmissionListItem[]) {
   }, {})
 }
 
+function isProctoringLockError(error: unknown) {
+  return error instanceof ApiError
+    && error.status === 403
+    && getErrorMessage(error, '').toLowerCase().includes('proctoring violation')
+}
+
 export default function CandidateDashboard() {
   const { user, getAccessToken } = useAuth()
+  const navigate = useNavigate()
   const isInterviewer = user?.role === 'interviewer' || user?.role === 'admin'
   const [exams, setExams] = useState<Exam[]>([])
+  const [examAccesses, setExamAccesses] = useState<Record<string, ExamAccess>>({})
   const [problemCounts, setProblemCounts] = useState<Record<string, number>>({})
+  const [lockedExams, setLockedExams] = useState<Record<string, boolean>>({})
   const [latestSubmissions, setLatestSubmissions] = useState<Record<string, SubmissionListItem>>({})
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [now, setNow] = useState(() => new Date())
   const [loading, setLoading] = useState(true)
+  const [startingExamId, setStartingExamId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -69,18 +80,40 @@ export default function CandidateDashboard() {
         const token = await getAccessToken()
         if (!token) throw new Error('Session expired. Please sign in again.')
         const data = await apiListExams(token)
+        const accessEntries = await Promise.all(
+          data.map(async (exam) => {
+            if (user?.role !== 'candidate') return [exam.exam_id, null] as const
+            return [exam.exam_id, await apiGetExamAccess(token, exam.exam_id)] as const
+          }),
+        )
+        const accessMap = Object.fromEntries(
+          accessEntries.filter(([, access]) => access !== null),
+        ) as Record<string, ExamAccess>
         const [counts, submissions] = await Promise.all([
           Promise.all(
             data.map(async (exam) => {
-              const problems = await apiListExamProblems(token, exam.exam_id)
-              return [exam.exam_id, problems.length] as const
+              const access = accessMap[exam.exam_id]
+              if (user?.role === 'candidate' && access && !access.can_view_problems) {
+                return [exam.exam_id, 0, false] as const
+              }
+              try {
+                const problems = await apiListExamProblems(token, exam.exam_id)
+                return [exam.exam_id, problems.length, false] as const
+              } catch (e) {
+                if (isProctoringLockError(e)) return [exam.exam_id, 0, true] as const
+                throw e
+              }
             }),
           ),
           apiListSubmissions(token),
         ])
         if (!cancelled) {
           setExams(data)
-          setProblemCounts(Object.fromEntries(counts))
+          setExamAccesses(accessMap)
+          setProblemCounts(Object.fromEntries(counts.map(([examId, count]) => [examId, count])))
+          setLockedExams(Object.fromEntries(
+            counts.filter(([, , locked]) => locked).map(([examId]) => [examId, true]),
+          ))
           setLatestSubmissions(latestSubmissionByExam(submissions))
         }
       } catch (e) {
@@ -94,7 +127,51 @@ export default function CandidateDashboard() {
     return () => {
       cancelled = true
     }
-  }, [getAccessToken])
+  }, [getAccessToken, user?.role])
+
+  async function openExam(exam: Exam) {
+    navigate(`/exams/${exam.exam_id}`)
+  }
+
+  async function handleStartExam(exam: Exam) {
+    setStartingExamId(exam.exam_id)
+    setError(null)
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Session expired. Please sign in again.')
+      await apiStartExam(token, exam.exam_id)
+      if (exam.anti_cheat_enabled && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+      }
+      const path = `/exams/${exam.exam_id}`
+      if (exam.anti_cheat_enabled) {
+        setActiveExamLock({ examId: exam.exam_id, path })
+      }
+      navigate(path)
+    } catch (e) {
+      setError(getErrorMessage(e, 'Failed to start exam'))
+    } finally {
+      setStartingExamId(null)
+    }
+  }
+
+  async function handleContinueExam(exam: Exam) {
+    setStartingExamId(exam.exam_id)
+    setError(null)
+    try {
+      if (exam.anti_cheat_enabled && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+      }
+      if (exam.anti_cheat_enabled) {
+        setActiveExamLock({ examId: exam.exam_id, path: `/exams/${exam.exam_id}` })
+      }
+      await openExam(exam)
+    } catch (e) {
+      setError(getErrorMessage(e, 'Failed to open exam'))
+    } finally {
+      setStartingExamId(null)
+    }
+  }
 
   const stats = useMemo(() => {
     return exams.reduce<Record<ExamStatus, number>>(
@@ -203,13 +280,24 @@ export default function CandidateDashboard() {
                 <th className="px-4 py-3 text-left font-semibold">Start Time</th>
                 <th className="px-4 py-3 text-left font-semibold">End Time</th>
                 <th className="px-4 py-3 text-left font-semibold">Last Submission</th>
+                <th className="px-4 py-3 text-right font-semibold">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-oj-border">
               {visibleExams.map((exam) => {
                 const status = examStatus(exam, now)
+                const access = examAccesses[exam.exam_id]
                 const latest = latestSubmissions[exam.exam_id]
                 const latestVerdict = latest?.judge_result?.verdict ?? latest?.status
+                const locked = lockedExams[exam.exam_id]
+                const actionLabel = access?.can_start
+                  ? 'Start'
+                  : access?.status_label === 'in_progress'
+                    ? 'Continue'
+                    : status === 'Ended' || access?.status_label === 'finished'
+                      ? 'Finished'
+                      : 'Not Started'
+                const actionEnabled = Boolean(access?.can_start || access?.can_solve)
                 return (
                   <tr key={exam.exam_id} className="transition-colors hover:bg-red-50/40">
                     <td className="min-w-[240px] px-4 py-3">
@@ -249,7 +337,11 @@ export default function CandidateDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-oj-fg">
-                      {problemCounts[exam.exam_id] ?? '-'}
+                      {locked ? (
+                        <span className="text-xs font-semibold text-red-700">Locked</span>
+                      ) : (
+                        problemCounts[exam.exam_id] ?? '-'
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-oj-fg-muted">
                       {formatDate(exam.start_time)}
@@ -267,6 +359,28 @@ export default function CandidateDashboard() {
                         </div>
                       ) : (
                         <span className="font-mono text-oj-fg-muted">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {isInterviewer ? (
+                        <Link
+                          to={`/exams/${exam.exam_id}`}
+                          className="text-xs font-medium text-oj-accent hover:underline"
+                        >
+                          View
+                        </Link>
+                      ) : actionEnabled ? (
+                        <button
+                          type="button"
+                          onClick={() => access?.can_start ? handleStartExam(exam) : handleContinueExam(exam)}
+                          disabled={startingExamId === exam.exam_id}
+                          className="rounded-md bg-oj-accent px-3 py-1.5 text-xs font-semibold text-white
+                                     hover:bg-oj-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {startingExamId === exam.exam_id ? 'Starting...' : actionLabel}
+                        </button>
+                      ) : (
+                        <span className="font-mono text-xs text-oj-fg-muted">{actionLabel}</span>
                       )}
                     </td>
                   </tr>

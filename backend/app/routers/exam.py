@@ -8,8 +8,10 @@ from app.deps import get_current_user
 from app.models.exam import Exam
 from app.models.user import User
 from app.schemas.exam import (
+    ExamAccessOut,
     ExamAssignmentCreate,
     ExamAssignmentOut,
+    ExamAttemptOut,
     ExamCandidateStateOut,
     ExamCreate,
     ExamOut,
@@ -75,6 +77,83 @@ async def get_candidate_state(
         db, exam.exam_id, current_user.user_id
     )
     return ExamCandidateStateOut.model_validate(state)
+
+
+@router.get("/{exam_id}/attempt", response_model=ExamAttemptOut | None)
+async def get_exam_attempt(
+    exam: Exam = Depends(get_scoped_exam),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "candidate")
+    attempt = await exam_service.get_exam_attempt(
+        db, exam.exam_id, current_user.user_id
+    )
+    return ExamAttemptOut.model_validate(attempt) if attempt is not None else None
+
+
+@router.get("/{exam_id}/access", response_model=ExamAccessOut)
+async def get_exam_access(
+    exam: Exam = Depends(get_scoped_exam),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    access = await exam_service.get_exam_access(
+        db, exam, current_user.user_id, current_user.role
+    )
+    return ExamAccessOut(**vars(access))
+
+
+@router.post("/{exam_id}/start", response_model=ExamAttemptOut, status_code=201)
+async def start_exam(
+    exam: Exam = Depends(get_scoped_exam),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "candidate")
+    attempt = await exam_service.start_exam_attempt(
+        db, exam, current_user.user_id
+    )
+    return ExamAttemptOut.model_validate(attempt)
+
+
+@router.post("/{exam_id}/end", response_model=ExamAttemptOut)
+async def end_exam(
+    exam: Exam = Depends(get_scoped_exam),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "candidate")
+    attempt = await exam_service.end_exam_attempt(
+        db, exam.exam_id, current_user.user_id
+    )
+    return ExamAttemptOut.model_validate(attempt)
+
+
+@router.post("/{exam_id}/fullscreen-exit", response_model=ExamAttemptOut)
+async def fullscreen_exit(
+    exam: Exam = Depends(get_scoped_exam),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "candidate")
+    attempt = await exam_service.register_fullscreen_exit(
+        db, exam, current_user.user_id
+    )
+    return ExamAttemptOut.model_validate(attempt)
+
+
+@router.post("/{exam_id}/fullscreen-return", response_model=ExamAttemptOut)
+async def fullscreen_return(
+    exam: Exam = Depends(get_scoped_exam),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "candidate")
+    attempt = await exam_service.register_fullscreen_return(
+        db, exam, current_user.user_id
+    )
+    return ExamAttemptOut.model_validate(attempt)
 
 
 @router.post("/{exam_id}/proctoring-events", response_model=ExamCandidateStateOut)

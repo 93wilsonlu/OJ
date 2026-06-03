@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { vi, beforeEach } from 'vitest'
 import AppShell from '../src/components/AppShell'
 import * as useAuthModule from '../src/hooks/useAuth'
+import { setActiveExamLock } from '../src/utils/activeExamLock'
 
 const mockLogout = vi.fn()
 
@@ -27,8 +28,14 @@ function renderShell() {
   )
 }
 
+function CurrentPath() {
+  const location = useLocation()
+  return <div>{location.pathname}</div>
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
+  sessionStorage.clear()
   mockLogout.mockResolvedValue(undefined)
 })
 
@@ -54,6 +61,49 @@ describe('AppShell nav links', () => {
     renderShell()
     expect(screen.getByRole('link', { name: 'My Exams' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument()
+  })
+
+  test('candidate exam lock disables global navigation and redirects back to the exam workspace', async () => {
+    mockUser('candidate')
+    setActiveExamLock({
+      examId: 'exam-1',
+      path: '/exams/exam-1/problems/problem-1',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/exams']}>
+        <AppShell>
+          <CurrentPath />
+        </AppShell>
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByRole('link', { name: 'My Exams' })).not.toBeInTheDocument()
+    expect(screen.getByText('My Exams')).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: /log out/i })).toBeDisabled()
+    await waitFor(() => {
+      expect(screen.getByText('/exams/exam-1/problems/problem-1')).toBeInTheDocument()
+    })
+  })
+
+  test('candidate exam lock allows exam-scoped submissions without enabling global navigation', async () => {
+    mockUser('candidate')
+    setActiveExamLock({
+      examId: 'exam-1',
+      path: '/exams/exam-1/problems/problem-1',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/exams/exam-1/submissions']}>
+        <AppShell>
+          <CurrentPath />
+        </AppShell>
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByRole('link', { name: 'Submissions' })).not.toBeInTheDocument()
+    expect(screen.getByText('Submissions')).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByText('/exams/exam-1/submissions')).toBeInTheDocument()
   })
 
   test('interviewer sees Exams link', () => {

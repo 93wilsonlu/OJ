@@ -19,6 +19,8 @@ function makeExam(overrides: Partial<Exam> = {}): Exam {
     start_time: isoFromNow(-30),
     end_time: isoFromNow(90),
     show_score: true,
+    anti_cheat_enabled: false,
+    test_time_minutes: null,
     created_by: null,
     created_at: isoFromNow(-60),
     ...overrides,
@@ -85,6 +87,21 @@ beforeEach(() => {
   vi.restoreAllMocks()
   mockAuth()
   vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue(makeExam())
+  vi.spyOn(examsApi, 'apiGetExamAccess').mockResolvedValue({
+    exam_id: 'exam-1',
+    status_label: 'in_progress',
+    can_view_exam: true,
+    can_view_problems: true,
+    can_start: false,
+    can_solve: true,
+    can_submit: true,
+    can_edit_submission: true,
+    can_view_submissions: true,
+    requires_fullscreen: false,
+    attempt_started_at: null,
+    attempt_deadline_at: null,
+    attempt_ended_at: null,
+  })
   vi.spyOn(examsApi, 'apiListExamProblems').mockResolvedValue(problems)
   vi.spyOn(examsApi, 'apiGetCandidateExamState').mockResolvedValue({
     exam_id: 'exam-1',
@@ -120,12 +137,27 @@ describe('ExamView', () => {
       start_time: isoFromNow(60),
       end_time: isoFromNow(120),
     }))
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockResolvedValue({
+      exam_id: 'exam-1',
+      status_label: 'not_started',
+      can_view_exam: true,
+      can_view_problems: false,
+      can_start: false,
+      can_solve: false,
+      can_submit: false,
+      can_edit_submission: false,
+      can_view_submissions: true,
+      requires_fullscreen: false,
+      attempt_started_at: null,
+      attempt_deadline_at: null,
+      attempt_ended_at: null,
+    })
 
     renderPage()
 
     await screen.findByRole('heading', { name: 'Sample Coding Interview' })
     expect(screen.getByText('Upcoming')).toBeInTheDocument()
-    expect(screen.getAllByText('Not started')).toHaveLength(2)
+    expect(screen.getByText('No problems assigned yet.')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Solve' })).not.toBeInTheDocument()
   })
 

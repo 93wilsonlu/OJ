@@ -22,6 +22,8 @@ function makeExams(): Exam[] {
       start_time: isoFromNow(-60),
       end_time: isoFromNow(60),
       show_score: true,
+      anti_cheat_enabled: false,
+      test_time_minutes: null,
       created_by: null,
       created_at: isoFromNow(-120),
     },
@@ -32,6 +34,8 @@ function makeExams(): Exam[] {
       start_time: isoFromNow(120),
       end_time: isoFromNow(180),
       show_score: true,
+      anti_cheat_enabled: false,
+      test_time_minutes: null,
       created_by: null,
       created_at: isoFromNow(-120),
     },
@@ -42,6 +46,8 @@ function makeExams(): Exam[] {
       start_time: isoFromNow(-180),
       end_time: isoFromNow(-120),
       show_score: true,
+      anti_cheat_enabled: false,
+      test_time_minutes: null,
       created_by: null,
       created_at: isoFromNow(-240),
     },
@@ -103,6 +109,21 @@ beforeEach(() => {
   vi.restoreAllMocks()
   mockCandidateAuth()
   vi.spyOn(examsApi, 'apiListExams').mockResolvedValue(makeExams())
+  vi.spyOn(examsApi, 'apiGetExamAccess').mockImplementation(async (_token, examId) => ({
+    exam_id: examId,
+    status_label: examId === 'active-exam' ? 'in_progress' : examId === 'ended-exam' ? 'finished' : 'not_started',
+    can_view_exam: true,
+    can_view_problems: examId !== 'upcoming-exam',
+    can_start: false,
+    can_solve: examId === 'active-exam',
+    can_submit: examId === 'active-exam',
+    can_edit_submission: examId === 'active-exam',
+    can_view_submissions: true,
+    requires_fullscreen: false,
+    attempt_started_at: null,
+    attempt_deadline_at: null,
+    attempt_ended_at: null,
+  }))
   vi.spyOn(examsApi, 'apiListExamProblems').mockImplementation(async (_token, examId) => {
     const counts: Record<string, number> = {
       'active-exam': 3,

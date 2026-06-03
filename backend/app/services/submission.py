@@ -14,6 +14,7 @@ from app.models.problem import Problem
 from app.models.submission import Submission
 from app.models.user import User
 from app.schemas.submission import SubmissionCreate
+from app.services import exam as exam_service
 from app.services import proctoring as proctoring_service
 from app.services import queue as queue_service
 from app.services import storage
@@ -75,15 +76,17 @@ async def create_submission(
     if exam is None:
         raise HTTPException(status_code=404, detail="Exam not found")
 
-    now = datetime.now(UTC)
-    exam_start = (
-        exam.start_time if exam.start_time.tzinfo else exam.start_time.replace(tzinfo=UTC)
-    )
-    if now < exam_start:
-        raise HTTPException(status_code=403, detail="Exam has not started")
-    exam_end = exam.end_time if exam.end_time.tzinfo else exam.end_time.replace(tzinfo=UTC)
-    if now > exam_end:
-        raise HTTPException(status_code=403, detail="Exam has ended")
+    access = await exam_service.get_exam_access(db, exam, candidate_id, "candidate")
+    if not access.can_submit:
+        if access.status_label == "not_started":
+            detail = "Exam has not started"
+        elif access.status_label == "finished":
+            detail = "Exam has ended"
+        elif access.status_label == "can_start":
+            detail = "Exam must be started before submitting"
+        else:
+            detail = "Exam is not accepting submissions"
+        raise HTTPException(status_code=403, detail=detail)
 
     await _check_assignment(db, candidate_id, data.exam_id, data.problem_id)
     await proctoring_service.ensure_candidate_not_locked(db, data.exam_id, candidate_id)
