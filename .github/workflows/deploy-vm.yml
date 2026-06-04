@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p ~/.ssh
 
-          printf '%s\n' "${{ secrets.GCE_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/gce_key
+          printf '%s' "${{ secrets.GCE_SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/.ssh/gce_key
           chmod 600 ~/.ssh/gce_key
 
           ssh-keygen -y -f ~/.ssh/gce_key > /tmp/gce_key.pub
