@@ -6,6 +6,7 @@ import * as submissionsApi from '../src/api/submissions'
 import * as useAuthModule from '../src/hooks/useAuth'
 import { useSubmissionPoller } from '../src/hooks/useSubmissionPoller'
 import ProblemEditor from '../src/pages/ProblemEditor'
+import AppShell from '../src/components/AppShell'
 import type { ExamProblem } from '../src/types/exam'
 
 vi.mock('@monaco-editor/react', () => ({
@@ -90,9 +91,21 @@ function renderPage(path = '/exams/exam-1/problems/problem-1') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/exams/:examId/problems/:problemId" element={<ProblemEditor />} />
-        <Route path="/exams/:examId/submissions" element={<div>Submissions</div>} />
-        <Route path="/exams/:examId/submissions/:submissionId" element={<div>Submission detail</div>} />
+        <Route path="/exams/:examId/problems/:problemId" element={
+          <AppShell>
+            <ProblemEditor />
+          </AppShell>
+        } />
+        <Route path="/exams/:examId/submissions" element={
+          <AppShell>
+            <div>Submissions</div>
+          </AppShell>
+        } />
+        <Route path="/exams/:examId/submissions/:submissionId" element={
+          <AppShell>
+            <div>Submission detail</div>
+          </AppShell>
+        } />
       </Routes>
     </MemoryRouter>,
   )

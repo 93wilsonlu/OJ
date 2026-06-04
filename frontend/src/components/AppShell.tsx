@@ -84,7 +84,10 @@ export default function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     const lock = getActiveExamLock()
     setActiveExamLock(lock)
-  }, [location.pathname])
+    if (lock && !location.pathname.startsWith(`/exams/${lock.examId}`)) {
+      navigate(lock.path, { replace: true })
+    }
+  }, [location.pathname, navigate])
 
   useEffect(() => {
     if (!activeExamLock || !proctoring.forceEnded) return
@@ -113,22 +116,45 @@ export default function AppShell({ children }: AppShellProps) {
           </Link>
 
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" aria-label="Main navigation">
-            {links.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  [
-                    'whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-red-50 text-oj-accent'
-                      : 'text-oj-fg-muted hover:bg-oj-surface2 hover:text-oj-fg',
-                  ].join(' ')
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
+            {links.map((item) => {
+              let toPath = item.to
+              if (activeExamLock && item.label === 'Submissions') {
+                toPath = `/exams/${activeExamLock.examId}/submissions`
+              }
+
+              const isDisabled = activeExamLock && (
+                item.label === 'My Exams' ||
+                (item.label === 'Submissions' && location.pathname.startsWith(`/exams/${activeExamLock.examId}/submissions`))
+              )
+
+              if (isDisabled) {
+                return (
+                  <span
+                    key={item.to}
+                    aria-disabled="true"
+                    className="whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-oj-fg-muted cursor-not-allowed opacity-60"
+                  >
+                    {item.label}
+                  </span>
+                )
+              }
+              return (
+                <NavLink
+                  key={item.to}
+                  to={toPath}
+                  className={({ isActive }) =>
+                    [
+                      'whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-red-50 text-oj-accent'
+                        : 'text-oj-fg-muted hover:bg-oj-surface2 hover:text-oj-fg',
+                    ].join(' ')
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              )
+            })}
           </nav>
 
           {user && (
@@ -149,7 +175,7 @@ export default function AppShell({ children }: AppShellProps) {
               <button
                 type="button"
                 onClick={handleLogout}
-                disabled={loggingOut}
+                disabled={loggingOut || Boolean(activeExamLock)}
                 aria-label={loggingOut ? 'Logging out' : 'Log out'}
                 className="rounded-md border border-oj-border bg-white px-3 py-2 text-sm font-medium text-oj-fg-muted transition-colors hover:border-oj-accent hover:text-oj-accent disabled:cursor-not-allowed disabled:opacity-60"
               >
