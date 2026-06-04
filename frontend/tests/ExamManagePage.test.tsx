@@ -133,6 +133,8 @@ describe('ExamManagePage - Initial Rendering', () => {
       start_time: '2026-06-01T10:00:00Z',
       end_time: '2026-06-01T12:00:00Z',
       show_score: false,
+      anti_cheat_enabled: false,
+      test_time_minutes: null,
       created_by: null,
       created_at: '2026-05-31T00:00:00Z',
     })
@@ -209,15 +211,20 @@ describe('ExamManagePage - Form Interactions and Saving', () => {
     const user = setupUser()
     vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue({
       exam_id: 'exam123',
-      title: 'Old Title',
+      title: 'To Be Deleted',
       description: '',
       start_time: '2026-06-01T10:00:00Z',
       end_time: '2026-06-01T12:00:00Z',
       show_score: false,
+      anti_cheat_enabled: false,
+      test_time_minutes: null,
       created_by: null,
       created_at: '2026-05-31T00:00:00Z',
     })
     vi.spyOn(examsApi, 'apiListAssignments').mockResolvedValue([])
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const mockDelete = vi.spyOn(examsApi, 'apiDeleteExam').mockResolvedValue(undefined as any)
 
     renderPage('/exams/exam123/manage')
 
