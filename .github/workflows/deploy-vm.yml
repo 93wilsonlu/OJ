@@ -35,8 +35,12 @@ jobs:
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.GCE_SSH_PRIVATE_KEY }}" > ~/.ssh/gce_key
+
+          printf '%s\n' "${{ secrets.GCE_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/gce_key
           chmod 600 ~/.ssh/gce_key
+
+          ssh-keygen -y -f ~/.ssh/gce_key > /tmp/gce_key.pub
+
           ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Upload package to VM
