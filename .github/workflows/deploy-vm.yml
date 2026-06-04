@@ -1,0 +1,75 @@
+name: Deploy to GCE VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Package project
+        run: |
+          tar \
+            --exclude="./frontend/node_modules" \
+            --exclude="./node_modules" \
+            --exclude="./backend/.venv" \
+            --exclude="./.git" \
+            --exclude="./.env" \
+            --exclude="./__pycache__" \
+            --exclude="./.pytest_cache" \
+            --exclude="./frontend/dist" \
+            --exclude="./frontend/build" \
+            -czf final_deploy.tar.gz .
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.GCE_SSH_PRIVATE_KEY }}" > ~/.ssh/gce_key
+          chmod 600 ~/.ssh/gce_key
+          ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload package to VM
+        run: |
+          scp -i ~/.ssh/gce_key final_deploy.tar.gz \
+            ${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}:~/final_deploy.tar.gz
+
+      - name: Deploy on VM
+        run: |
+          ssh -i ~/.ssh/gce_key ${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }} << 'EOF'
+          set -e
+
+          APP_DIR="$HOME/oj"
+
+          mkdir -p "$APP_DIR"
+
+          if [ ! -f "$APP_DIR/.env" ]; then
+            echo "ERROR: $APP_DIR/.env not found. Create it on VM first."
+            exit 1
+          fi
+
+          cp "$APP_DIR/.env" "$HOME/oj.env.backup"
+
+          rm -rf "$APP_DIR"/*
+          rm -rf "$APP_DIR"/.[!.]* "$APP_DIR"/..?* 2>/dev/null || true
+
+          tar -xzf "$HOME/final_deploy.tar.gz" -C "$APP_DIR"
+          cp "$HOME/oj.env.backup" "$APP_DIR/.env"
+
+          cd "$APP_DIR"
+
+          docker compose up -d --build --remove-orphans
+          docker compose ps
+
+          echo "Deploy finished."
+          EOF
