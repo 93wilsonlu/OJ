@@ -30,7 +30,7 @@ jobs:
             --exclude="./.pytest_cache" \
             --exclude="./frontend/dist" \
             --exclude="./frontend/build" \
-            -czf final_deploy.tar.gz .
+            -czf /tmp/final_deploy.tar.gz .
 
       - name: Configure SSH
         run: |
@@ -41,7 +41,7 @@ jobs:
 
       - name: Upload package to VM
         run: |
-          scp -i ~/.ssh/gce_key final_deploy.tar.gz \
+          scp -i ~/.ssh/gce_key /tmp/final_deploy.tar.gz \
             ${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}:~/final_deploy.tar.gz
 
       - name: Deploy on VM
