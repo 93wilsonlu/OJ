@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { apiGetExamAccess } from '../api/exams'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
@@ -10,9 +12,31 @@ function metricValue(value: number | null | undefined, suffix = '') {
 }
 
 export default function SubmissionStatus() {
-  const { submissionId } = useParams<{ submissionId: string }>()
-  const { getAccessToken } = useAuth()
+  const { examId, submissionId } = useParams<{ examId?: string; submissionId: string }>()
+  const { user, getAccessToken } = useAuth()
   const { data, error } = useSubmissionPoller(submissionId ?? null, getAccessToken)
+  const [canEditSubmission, setCanEditSubmission] = useState(true)
+
+  useEffect(() => {
+    if (!data || user?.role !== 'candidate') return
+    let cancelled = false
+
+    async function loadAccess() {
+      try {
+        const token = await getAccessToken()
+        if (!token) throw new Error('Session expired. Please sign in again.')
+        const access = await apiGetExamAccess(token, data!.exam_id)
+        if (!cancelled) setCanEditSubmission(access.can_edit_submission)
+      } catch {
+        if (!cancelled) setCanEditSubmission(false)
+      }
+    }
+
+    loadAccess()
+    return () => {
+      cancelled = true
+    }
+  }, [data, getAccessToken, user?.role])
 
   if (error) {
     return <div className="p-8 text-red-700 text-sm font-mono">Error: {error}</div>
@@ -23,10 +47,18 @@ export default function SubmissionStatus() {
   }
 
   const submission = data
+  if (examId && submission.exam_id !== examId) {
+    return (
+      <div className="p-8 text-red-700 text-sm font-mono">
+        Error: Submission does not belong to this exam.
+      </div>
+    )
+  }
+
   const jr = submission.judge_result
   const displayVerdict = jr?.verdict ?? submission.status
   const isRunning = (submission.status === 'pending' || submission.status === 'judging') && !jr
-  const canReuseCode = Boolean(submission.source_code)
+  const canReuseCode = Boolean(submission.source_code) && canEditSubmission
   const editorUrl = `/exams/${submission.exam_id}/problems/${submission.problem_id}?fromSubmission=${submission.submission_id}`
 
   function saveCodeForEditor() {

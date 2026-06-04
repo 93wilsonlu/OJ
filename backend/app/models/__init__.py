@@ -1,5 +1,6 @@
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.exam_attempt import ExamAttempt
 from app.models.exam_candidate_state import ExamCandidateState
 from app.models.judge_result import JudgeResult
 from app.models.problem import Problem
@@ -15,6 +16,7 @@ __all__ = [
     "TestCase",
     "Exam",
     "ExamAssignment",
+    "ExamAttempt",
     "ExamCandidateState",
     "Submission",
     "JudgeResult",

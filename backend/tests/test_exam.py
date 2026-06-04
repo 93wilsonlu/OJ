@@ -18,10 +18,16 @@ from app.services.exam import (
     create_exam,
     delete_assignment,
     delete_exam,
+    end_exam_attempt,
     get_exam,
+    get_exam_access,
     get_exam_for_user,
     get_owned_exam,
+    list_exam_problems_for_user,
     list_exams,
+    register_fullscreen_exit,
+    register_fullscreen_return,
+    start_exam_attempt,
     update_exam,
 )
 from tests.factories import (
@@ -31,7 +37,13 @@ from tests.factories import (
     client_for as _client_for,
 )
 from tests.factories import (
+    make_attempt as _make_attempt,
+)
+from tests.factories import (
     make_exam as _make_exam,
+)
+from tests.factories import (
+    make_problem as _make_problem,
 )
 from tests.factories import (
     make_user as _make_user,
@@ -137,6 +149,22 @@ async def test_create_exam_commits_and_returns():
 
 
 @pytest.mark.asyncio
+async def test_create_anti_cheat_exam_sets_test_time():
+    db = _mock_db()
+    creator_id = uuid.uuid4()
+    data = ExamCreate(
+        title="Proctored",
+        start_time=datetime.now(UTC),
+        end_time=datetime.now(UTC) + timedelta(hours=1),
+        anti_cheat_enabled=True,
+        test_time_minutes=45,
+    )
+    exam = await create_exam(db, data, creator_id)
+    assert exam.anti_cheat_enabled is True
+    assert exam.test_time_minutes == 45
+
+
+@pytest.mark.asyncio
 async def test_update_exam_applies_fields():
     exam = _make_exam("Old Title")
     db = _mock_db()
@@ -144,6 +172,16 @@ async def test_update_exam_applies_fields():
     updated = await update_exam(db, exam, ExamUpdate(title="New Title"))
     assert updated.title == "New Title"
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_exam_rejects_anti_cheat_without_test_time():
+    exam = _make_exam()
+    db = _mock_db()
+    with pytest.raises(HTTPException) as exc:
+        await update_exam(db, exam, ExamUpdate(anti_cheat_enabled=True))
+    assert exc.value.status_code == 422
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -174,10 +212,310 @@ async def test_delete_exam_deletes_dependents_in_fk_order():
         "judge_results",
         "submissions",
         "exam_candidate_states",
+        "exam_attempts",
         "exam_assignments",
         "exams",
     ]
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_start_exam_attempt_creates_attempt_with_clamped_deadline():
+    now = datetime.now(UTC)
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=180)
+    exam.start_time = now - timedelta(minutes=1)
+    exam.end_time = now + timedelta(minutes=30)
+    candidate_id = uuid.uuid4()
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=result_mock)
+
+    attempt = await start_exam_attempt(db, exam, candidate_id, now)
+
+    assert attempt.exam_id == exam.exam_id
+    assert attempt.candidate_id == candidate_id
+    assert attempt.started_at == now
+    assert attempt.deadline_at == exam.end_time
+    db.add.assert_called_once_with(attempt)
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_start_exam_attempt_returns_existing_active_attempt():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=now + timedelta(minutes=10),
+    )
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    result = await start_exam_attempt(db, exam, candidate_id, now)
+
+    assert result is attempt
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_start_exam_attempt_rejects_restart_after_end():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(exam.exam_id, candidate_id, status="ended")
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    with pytest.raises(HTTPException) as exc:
+        await start_exam_attempt(db, exam, candidate_id, now)
+
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_end_exam_attempt_marks_attempt_ended():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(exam.exam_id, candidate_id)
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    ended = await end_exam_attempt(db, exam.exam_id, candidate_id, now)
+
+    assert ended.status == "ended"
+    assert ended.ended_at == now
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fullscreen_exit_sets_force_end_deadline():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=now + timedelta(minutes=10),
+    )
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    updated = await register_fullscreen_exit(db, exam, candidate_id, now)
+
+    assert updated.fullscreen_exit_started_at == now
+    assert updated.force_end_at == now + timedelta(seconds=5)
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fullscreen_return_before_grace_clears_warning():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=now + timedelta(minutes=10),
+    )
+    attempt.fullscreen_exit_started_at = now - timedelta(seconds=3)
+    attempt.force_end_at = now + timedelta(seconds=2)
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    updated = await register_fullscreen_return(db, exam, candidate_id, now)
+
+    assert updated.status == "in_progress"
+    assert updated.fullscreen_exit_started_at is None
+    assert updated.force_end_at is None
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fullscreen_return_after_grace_force_ends_attempt():
+    force_end_at = datetime.now(UTC) - timedelta(seconds=1)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=force_end_at + timedelta(minutes=10),
+    )
+    attempt.fullscreen_exit_started_at = force_end_at - timedelta(seconds=5)
+    attempt.force_end_at = force_end_at
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    updated = await register_fullscreen_return(
+        db, exam, candidate_id, force_end_at + timedelta(seconds=1)
+    )
+
+    assert updated.status == "force_ended"
+    assert updated.ended_at == force_end_at
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_exam_access_for_anti_cheat_before_attempt_can_start():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    exam.start_time = now - timedelta(minutes=1)
+    exam.end_time = now + timedelta(hours=1)
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=result_mock)
+
+    access = await get_exam_access(db, exam, candidate_id, "candidate", now)
+
+    assert access.status_label == "can_start"
+    assert access.can_start is True
+    assert access.can_view_problems is False
+    assert access.can_submit is False
+
+
+@pytest.mark.asyncio
+async def test_exam_access_for_active_attempt_can_solve():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=now + timedelta(minutes=10),
+    )
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    access = await get_exam_access(db, exam, candidate_id, "candidate", now)
+
+    assert access.status_label == "in_progress"
+    assert access.can_view_problems is True
+    assert access.can_submit is True
+    assert access.requires_fullscreen is True
+
+
+@pytest.mark.asyncio
+async def test_exam_access_for_expired_attempt_is_readonly():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=now - timedelta(seconds=1),
+    )
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    access = await get_exam_access(db, exam, candidate_id, "candidate", now)
+
+    assert access.status_label == "expired"
+    assert access.can_view_problems is True
+    assert access.can_submit is False
+    assert access.can_edit_submission is False
+
+
+@pytest.mark.asyncio
+async def test_exam_access_force_ends_attempt_after_fullscreen_grace():
+    force_end_at = datetime.now(UTC) - timedelta(seconds=1)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=force_end_at + timedelta(minutes=10),
+    )
+    attempt.fullscreen_exit_started_at = force_end_at - timedelta(seconds=5)
+    attempt.force_end_at = force_end_at
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    access = await get_exam_access(
+        db, exam, candidate_id, "candidate", force_end_at + timedelta(seconds=1)
+    )
+
+    assert access.status_label == "force_ended"
+    assert access.can_view_problems is True
+    assert access.can_submit is False
+    assert attempt.ended_at == force_end_at
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_list_exam_problems_anti_cheat_without_attempt_before_end_raises_403():
+    now = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    exam.start_time = now - timedelta(minutes=1)
+    exam.end_time = now + timedelta(hours=1)
+
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    no_attempt_result = MagicMock()
+    no_attempt_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=no_attempt_result)
+
+    with pytest.raises(HTTPException) as exc:
+        await list_exam_problems_for_user(db, exam.exam_id, candidate_id, "candidate")
+
+    assert exc.value.status_code == 403
+    assert "problems" in exc.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_list_exam_problems_anti_cheat_after_end_is_readonly_visible():
+    candidate_id = uuid.uuid4()
+    problem = _make_problem()
+    exam = _make_exam(ended=True, anti_cheat_enabled=True, test_time_minutes=30)
+    assignment = ExamAssignment()
+    assignment.assignment_id = uuid.uuid4()
+    assignment.exam_id = exam.exam_id
+    assignment.candidate_id = candidate_id
+    assignment.problem_id = problem.problem_id
+    assignment.assigned_difficulty = None
+
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    no_attempt_result = MagicMock()
+    no_attempt_result.scalar_one_or_none.return_value = None
+    no_state_result = MagicMock()
+    no_state_result.scalar_one_or_none.return_value = None
+    rows_result = MagicMock()
+    rows_result.all.return_value = [(assignment, problem)]
+    db.execute = AsyncMock(
+        side_effect=[no_attempt_result, no_state_result, rows_result]
+    )
+
+    rows = await list_exam_problems_for_user(
+        db, exam.exam_id, candidate_id, "candidate"
+    )
+
+    assert len(rows) == 1
+    assert rows[0].problem_id == problem.problem_id
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,8 @@
 import type {
   Exam,
+  ExamAccess,
   ExamAssignment,
+  ExamAttempt,
   ExamCandidateState,
   ExamCreate,
   ExamProblem,
@@ -106,6 +108,50 @@ export async function apiGetCandidateExamState(
   examId: string,
 ): Promise<ExamCandidateState> {
   const res = await fetch(`${BASE}/exams/${examId}/candidate-state`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+  return res.json()
+}
+
+export async function apiGetExamAccess(token: string, examId: string): Promise<ExamAccess> {
+  const res = await fetch(`${BASE}/exams/${examId}/access`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+  return res.json()
+}
+
+export async function apiStartExam(token: string, examId: string): Promise<ExamAttempt> {
+  const res = await fetch(`${BASE}/exams/${examId}/start`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+  return res.json()
+}
+
+export async function apiEndExam(token: string, examId: string): Promise<ExamAttempt> {
+  const res = await fetch(`${BASE}/exams/${examId}/end`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+  return res.json()
+}
+
+export async function apiFullscreenExit(token: string, examId: string): Promise<ExamAttempt> {
+  const res = await fetch(`${BASE}/exams/${examId}/fullscreen-exit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  await throwOnError(res)
+  return res.json()
+}
+
+export async function apiFullscreenReturn(token: string, examId: string): Promise<ExamAttempt> {
+  const res = await fetch(`${BASE}/exams/${examId}/fullscreen-return`, {
+    method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnError(res)

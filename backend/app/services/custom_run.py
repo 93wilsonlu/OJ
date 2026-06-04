@@ -13,6 +13,7 @@ from app.models.exam_assignment import ExamAssignment
 from app.models.problem import Problem
 from app.models.user import User
 from app.schemas.submission import SubmissionRunCreate
+from app.services import exam as exam_service
 from app.services import proctoring as proctoring_service
 from app.services import queue as queue_service
 
@@ -86,15 +87,9 @@ async def create_run(
     exam, problem = await _get_assigned_problem(
         db, current_user.user_id, data.exam_id, data.problem_id
     )
-    now = datetime.now(UTC)
-    exam_start = (
-        exam.start_time if exam.start_time.tzinfo else exam.start_time.replace(tzinfo=UTC)
-    )
-    exam_end = exam.end_time if exam.end_time.tzinfo else exam.end_time.replace(tzinfo=UTC)
-    if now < exam_start:
-        raise HTTPException(status_code=403, detail="Exam has not started")
-    if now > exam_end:
-        raise HTTPException(status_code=403, detail="Exam has ended")
+    access = await exam_service.get_exam_access(db, exam, current_user.user_id, "candidate")
+    if not access.can_solve:
+        raise HTTPException(status_code=403, detail="Exam is not accepting runs")
 
     await proctoring_service.ensure_candidate_not_locked(db, data.exam_id, current_user.user_id)
 

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getErrorMessage } from '../api/errors'
-import { apiCreateProctoringEvent, apiGetCandidateExamState } from '../api/exams'
+import { apiFullscreenExit, apiFullscreenReturn } from '../api/exams'
 
-const WARNING_SECONDS = 10
+const WARNING_SECONDS = 5
 
 function isCompliant() {
   return Boolean(document.fullscreenElement)
@@ -20,96 +20,91 @@ function violatingEventType() {
 export function useExamProctoring(
   examId: string | undefined,
   getAccessToken: () => Promise<string | null>,
+  enabled: boolean,
 ) {
-  const [started, setStarted] = useState(false)
+  const [started, setStarted] = useState(!enabled)
   const [violating, setViolating] = useState(false)
   const [remainingSeconds, setRemainingSeconds] = useState(WARNING_SECONDS)
-  const [locked, setLocked] = useState(false)
+  const [forceEnded, setForceEnded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const warningStartedAtRef = useRef<number | null>(null)
   const lastViolatingRef = useRef(false)
-  const lastTimeoutReportAtRef = useRef<number | null>(null)
+  const forceEndReportedRef = useRef(false)
 
-  const reportEvent = useCallback(async (
-    eventType: string,
-    isViolation: boolean,
-  ) => {
-    if (!examId) return
+  useEffect(() => {
+    setStarted(!enabled || Boolean(document.fullscreenElement))
+    setViolating(false)
+    setRemainingSeconds(WARNING_SECONDS)
+    warningStartedAtRef.current = null
+    lastViolatingRef.current = false
+    forceEndReportedRef.current = false
+  }, [enabled, examId])
+
+  const reportExit = useCallback(async () => {
+    if (!examId || !enabled) return
     try {
       const token = await getAccessToken()
       if (!token) throw new Error('Session expired. Please sign in again.')
-      const state = await apiCreateProctoringEvent(token, examId, {
-        event_type: eventType,
-        violating: isViolation,
-      })
-      setLocked(state.status === 'locked')
+      const attempt = await apiFullscreenExit(token, examId)
+      setForceEnded(attempt.status === 'force_ended')
       setError(null)
     } catch (e) {
-      setError(getErrorMessage(e, 'Failed to report proctoring event'))
+      setError(getErrorMessage(e, 'Failed to report fullscreen exit'))
     }
-  }, [examId, getAccessToken])
+  }, [enabled, examId, getAccessToken])
 
-  useEffect(() => {
-    if (!examId) return
-    let cancelled = false
-
-    async function loadState() {
-      try {
-        const token = await getAccessToken()
-        if (!token) throw new Error('Session expired. Please sign in again.')
-        const state = await apiGetCandidateExamState(token, examId!)
-        if (!cancelled) setLocked(state.status === 'locked')
-      } catch (e) {
-        if (!cancelled) setError(getErrorMessage(e, 'Failed to load exam state'))
-      }
+  const reportReturn = useCallback(async () => {
+    if (!examId || !enabled) return
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Session expired. Please sign in again.')
+      const attempt = await apiFullscreenReturn(token, examId)
+      setForceEnded(attempt.status === 'force_ended')
+      setError(null)
+    } catch (e) {
+      setError(getErrorMessage(e, 'Failed to report fullscreen return'))
     }
+  }, [enabled, examId, getAccessToken])
 
-    loadState()
-    return () => {
-      cancelled = true
-    }
-  }, [examId, getAccessToken])
-
-  const evaluateCompliance = useCallback((eventType?: string) => {
-    if (!started || locked) return
+  const evaluateCompliance = useCallback(() => {
+    if (!enabled || forceEnded) return
     const nextViolating = !isCompliant()
     setViolating(nextViolating)
 
     if (nextViolating && !lastViolatingRef.current) {
       warningStartedAtRef.current = Date.now()
-      lastTimeoutReportAtRef.current = null
+      forceEndReportedRef.current = false
       setRemainingSeconds(WARNING_SECONDS)
-      void reportEvent(eventType ?? violatingEventType(), true)
+      void reportExit()
     }
 
     if (!nextViolating && lastViolatingRef.current) {
       warningStartedAtRef.current = null
-      lastTimeoutReportAtRef.current = null
+      forceEndReportedRef.current = false
       setRemainingSeconds(WARNING_SECONDS)
-      void reportEvent(eventType ?? 'compliance_restored', false)
+      void reportReturn()
     }
 
     lastViolatingRef.current = nextViolating
-  }, [locked, reportEvent, started])
+  }, [enabled, forceEnded, reportExit, reportReturn])
 
   useEffect(() => {
-    if (!started || locked) return
+    if (!enabled || forceEnded) return
 
     const onFullscreenChange = () => {
-      evaluateCompliance(document.fullscreenElement ? 'fullscreen_restored' : 'fullscreen_lost')
+      setStarted(Boolean(document.fullscreenElement))
+      evaluateCompliance()
     }
-    const onVisibilityChange = () => {
-      evaluateCompliance(document.visibilityState === 'visible' ? 'tab_visible' : 'tab_hidden')
-    }
-    const onBlur = () => evaluateCompliance('window_blur')
-    const onFocus = () => evaluateCompliance('window_focus')
+    const onVisibilityChange = () => evaluateCompliance()
+    const onBlur = () => evaluateCompliance()
+    const onFocus = () => evaluateCompliance()
 
     document.addEventListener('fullscreenchange', onFullscreenChange)
     document.addEventListener('visibilitychange', onVisibilityChange)
     window.addEventListener('blur', onBlur)
     window.addEventListener('focus', onFocus)
 
-    evaluateCompliance('monitor_started')
+    evaluateCompliance()
 
     return () => {
       document.removeEventListener('fullscreenchange', onFullscreenChange)
@@ -117,10 +112,10 @@ export function useExamProctoring(
       window.removeEventListener('blur', onBlur)
       window.removeEventListener('focus', onFocus)
     }
-  }, [evaluateCompliance, locked, started])
+  }, [enabled, evaluateCompliance, forceEnded])
 
   useEffect(() => {
-    if (!started || locked) return
+    if (!enabled || forceEnded) return
 
     const timer = window.setInterval(() => {
       if (!lastViolatingRef.current || warningStartedAtRef.current === null) return
@@ -128,20 +123,17 @@ export function useExamProctoring(
       const nextRemaining = Math.max(0, WARNING_SECONDS - Math.floor(elapsedMs / 1000))
       setRemainingSeconds(nextRemaining)
 
-      const lastTimeoutReportAt = lastTimeoutReportAtRef.current
-      if (
-        elapsedMs >= WARNING_SECONDS * 1000
-        && (lastTimeoutReportAt === null || Date.now() - lastTimeoutReportAt >= 1000)
-      ) {
-        lastTimeoutReportAtRef.current = Date.now()
-        void reportEvent('warning_timeout', true)
+      if (elapsedMs >= WARNING_SECONDS * 1000 && !forceEndReportedRef.current) {
+        forceEndReportedRef.current = true
+        void reportReturn()
       }
     }, 250)
 
     return () => window.clearInterval(timer)
-  }, [locked, reportEvent, started])
+  }, [enabled, forceEnded, reportReturn])
 
   const enterFullscreen = useCallback(async () => {
+    if (!enabled) return
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen()
@@ -150,20 +142,22 @@ export function useExamProctoring(
       setViolating(false)
       warningStartedAtRef.current = null
       lastViolatingRef.current = false
-      lastTimeoutReportAtRef.current = null
+      forceEndReportedRef.current = false
       setRemainingSeconds(WARNING_SECONDS)
-      await reportEvent('fullscreen_restored', false)
+      await reportReturn()
     } catch (e) {
       setError(getErrorMessage(e, 'Failed to enter fullscreen mode'))
     }
-  }, [reportEvent])
+  }, [enabled, reportReturn])
 
   return {
     started,
     violating,
     remainingSeconds,
-    locked,
+    locked: forceEnded,
+    forceEnded,
     error,
     enterFullscreen,
+    eventType: violating ? violatingEventType() : null,
   }
 }

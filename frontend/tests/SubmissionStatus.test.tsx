@@ -42,6 +42,18 @@ function renderPage() {
     <MemoryRouter initialEntries={['/submissions/submission-1']}>
       <Routes>
         <Route path="/submissions/:submissionId" element={<SubmissionStatus />} />
+        <Route path="/exams/:examId/submissions/:submissionId" element={<SubmissionStatus />} />
+        <Route path="/exams/:examId/problems/:problemId" element={<div>Editor</div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+function renderScopedPage() {
+  return render(
+    <MemoryRouter initialEntries={['/exams/exam-1/submissions/submission-1']}>
+      <Routes>
+        <Route path="/exams/:examId/submissions/:submissionId" element={<SubmissionStatus />} />
         <Route path="/exams/:examId/problems/:problemId" element={<div>Editor</div>} />
       </Routes>
     </MemoryRouter>,
@@ -104,5 +116,16 @@ describe('SubmissionStatus', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Use in editor' }))
 
     expect(sessionStorage.getItem('submission-reuse:submission-1')).toContain("print('hello')")
+  })
+
+  test('supports exam-scoped submission details for code reuse', () => {
+    vi.mocked(useSubmissionPoller).mockReturnValue({ data: baseSubmission, error: null })
+
+    renderScopedPage()
+
+    expect(screen.getByRole('link', { name: 'Use in editor' })).toHaveAttribute(
+      'href',
+      '/exams/exam-1/problems/problem-1?fromSubmission=submission-1',
+    )
   })
 })

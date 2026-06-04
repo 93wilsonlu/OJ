@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, vi } from 'vitest'
 import * as submissionsApi from '../src/api/submissions'
 import * as useAuthModule from '../src/hooks/useAuth'
@@ -50,6 +50,17 @@ function mockAuth(role: 'candidate' | 'interviewer' = 'candidate') {
   })
 }
 
+function renderPage(path = '/submissions') {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/submissions" element={<SubmissionsPage />} />
+        <Route path="/exams/:examId/submissions" element={<SubmissionsPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
   mockAuth()
@@ -87,11 +98,7 @@ describe('SubmissionsPage', () => {
   })
 
   test('filters by verdict/status', async () => {
-    render(
-      <MemoryRouter>
-        <SubmissionsPage />
-      </MemoryRouter>,
-    )
+    renderPage()
 
     await screen.findByText('Two Sum')
     fireEvent.change(screen.getByRole('combobox', { name: 'Verdict filter' }), {
@@ -102,5 +109,17 @@ describe('SubmissionsPage', () => {
       expect(screen.queryByText('Two Sum')).not.toBeInTheDocument()
       expect(screen.getByText('Graph Walk')).toBeInTheDocument()
     })
+  })
+
+  test('filters exam-scoped submissions and links to scoped details', async () => {
+    renderPage('/exams/exam-1/submissions')
+
+    await screen.findByText('Two Sum')
+
+    expect(submissionsApi.apiListSubmissions).toHaveBeenCalledWith('token', { exam_id: 'exam-1' })
+    expect(screen.getAllByRole('link', { name: 'View' })[0]).toHaveAttribute(
+      'href',
+      '/exams/exam-1/submissions/submission-1',
+    )
   })
 })

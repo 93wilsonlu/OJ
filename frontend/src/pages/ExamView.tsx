@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError, getErrorMessage } from '../api/errors'
-import { apiGetCandidateExamState, apiGetExam, apiListExamProblems } from '../api/exams'
+import {
+  apiEndExam,
+  apiGetCandidateExamState,
+  apiGetExam,
+  apiGetExamAccess,
+  apiListExamProblems,
+  apiStartExam,
+} from '../api/exams'
 import { useAuth } from '../hooks/useAuth'
-import type { Exam, ExamProblem } from '../types/exam'
+import type { Exam, ExamAccess, ExamProblem } from '../types/exam'
+import { clearActiveExamLock, setActiveExamLock } from '../utils/activeExamLock'
 import { formatDate } from '../utils/format'
 
 type ExamStatus = 'Active' | 'Upcoming' | 'Ended'
@@ -54,11 +62,14 @@ function isProctoringLockError(error: unknown) {
 
 export default function ExamView() {
   const { examId } = useParams<{ examId: string }>()
+  const navigate = useNavigate()
   const { user, getAccessToken } = useAuth()
   const [exam, setExam] = useState<Exam | null>(null)
+  const [access, setAccess] = useState<ExamAccess | null>(null)
   const [problems, setProblems] = useState<ExamProblem[]>([])
   const [now, setNow] = useState(() => new Date())
   const [loading, setLoading] = useState(true)
+  const [actionBusy, setActionBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [candidateLocked, setCandidateLocked] = useState(false)
 
@@ -79,18 +90,24 @@ export default function ExamView() {
       try {
         const token = await getAccessToken()
         if (!token) throw new Error('Session expired. Please sign in again.')
-        const [examData, problemList, state] = await Promise.all([
+        const [examData, accessData, state] = await Promise.all([
           apiGetExam(token, currentExamId),
-          apiListExamProblems(token, currentExamId).catch((e) => {
-            if (isProctoringLockError(e)) return []
-            throw e
-          }),
+          user?.role === 'candidate'
+            ? apiGetExamAccess(token, currentExamId)
+            : Promise.resolve(null),
           user?.role === 'candidate'
             ? apiGetCandidateExamState(token, currentExamId)
             : Promise.resolve(null),
         ])
+        const problemList = user?.role !== 'candidate' || accessData?.can_view_problems
+          ? await apiListExamProblems(token, currentExamId).catch((e) => {
+            if (isProctoringLockError(e)) return []
+            throw e
+          })
+          : []
         if (!cancelled) {
           setExam(examData)
+          setAccess(accessData)
           setProblems(problemList)
           setCandidateLocked(state?.status === 'locked')
         }
@@ -107,13 +124,65 @@ export default function ExamView() {
     }
   }, [examId, getAccessToken, user?.role])
 
+  useEffect(() => {
+    if (user?.role !== 'candidate' || !examId || !access) return
+    if (access.requires_fullscreen && access.can_solve) {
+      setActiveExamLock({ examId, path: `/exams/${examId}` })
+      return
+    }
+    if (!access.can_solve) clearActiveExamLock(examId)
+  }, [access, examId, user?.role])
+
   if (loading) return <div className="p-8 text-sm text-oj-fg-muted">Loading...</div>
   if (error) return <div className="p-8 text-sm font-medium text-red-700">Error: {error}</div>
   if (!exam || !examId) return null
 
   const status = examStatus(exam, now)
-  const canSubmit = user?.role === 'candidate' && status === 'Active' && !candidateLocked
+  const canSubmit = user?.role === 'candidate' && Boolean(access?.can_solve) && !candidateLocked
   const isStaff = user?.role === 'interviewer' || user?.role === 'admin'
+
+  async function handleStart() {
+    if (!examId || !exam) return
+    setActionBusy(true)
+    setError(null)
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Session expired. Please sign in again.')
+      await apiStartExam(token, examId)
+      if (exam.anti_cheat_enabled && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+      }
+      const problemList = await apiListExamProblems(token, examId)
+      if (exam.anti_cheat_enabled) {
+        setActiveExamLock({ examId, path: `/exams/${examId}` })
+      }
+      const nextAccess = await apiGetExamAccess(token, examId)
+      setAccess(nextAccess)
+      setProblems(problemList)
+    } catch (e) {
+      setError(getErrorMessage(e, 'Failed to start exam'))
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function handleEnd() {
+    if (!examId) return
+    setActionBusy(true)
+    setError(null)
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Session expired. Please sign in again.')
+      await apiEndExam(token, examId)
+      clearActiveExamLock(examId)
+      if (document.fullscreenElement) await document.exitFullscreen()
+      navigate('/exams')
+    } catch (e) {
+      setError(getErrorMessage(e, 'Failed to end test'))
+    } finally {
+      setActionBusy(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -142,7 +211,40 @@ export default function ExamView() {
           </div>
           <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-right">
             <div className="text-xs font-semibold uppercase text-oj-accent">Remaining</div>
-            <div className="mt-1 font-mono text-lg text-oj-fg">{remainingLabel(exam, now)}</div>
+            <div className="mt-1 font-mono text-lg text-oj-fg">
+              {access?.attempt_deadline_at
+                ? formatDuration(new Date(access.attempt_deadline_at).getTime() - now.getTime())
+                : remainingLabel(exam, now)}
+            </div>
+            {user?.role === 'candidate' && (
+              <div className="mt-3 flex justify-end">
+                {access?.can_start ? (
+                  <button
+                    type="button"
+                    onClick={handleStart}
+                    disabled={actionBusy}
+                    className="rounded-md bg-oj-accent px-3 py-1.5 text-xs font-semibold text-white
+                               hover:bg-oj-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {actionBusy ? 'Starting...' : 'Start'}
+                  </button>
+                ) : access?.can_solve ? (
+                  <button
+                    type="button"
+                    onClick={handleEnd}
+                    disabled={actionBusy || !exam.anti_cheat_enabled}
+                    className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700
+                               hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {actionBusy ? 'Ending...' : 'End Test'}
+                  </button>
+                ) : (
+                  <span className="font-mono text-xs text-oj-fg-muted">
+                    {access?.status_label === 'finished' ? 'Finished' : access?.status_label ?? status}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -169,7 +271,7 @@ export default function ExamView() {
           </h2>
           {status !== 'Active' && user?.role === 'candidate' && (
             <p className="mt-1 text-sm text-oj-fg-muted">
-              {status === 'Upcoming' ? 'Submissions open at start time.' : "The exam has ended, so you can't open problems."}
+              {status === 'Upcoming' ? 'Submissions open at start time.' : "The exam has ended, so solving is disabled."}
             </p>
           )}
           {candidateLocked && (
@@ -228,9 +330,16 @@ export default function ExamView() {
                         >
                           View
                         </Link>
+                      ) : access?.can_view_problems ? (
+                        <Link
+                          to={`/exams/${examId}/problems/${problem.problem_id}`}
+                          className="text-xs font-medium text-oj-accent hover:underline"
+                        >
+                          View
+                        </Link>
                       ) : (
                         <span className="font-mono text-xs text-oj-fg-muted">
-                          {candidateLocked ? 'Locked' : status === 'Upcoming' ? 'Not started' : 'Ended'}
+                          {candidateLocked ? 'Locked' : access?.can_view_problems ? 'View only' : status === 'Upcoming' ? 'Not started' : 'Ended'}
                         </span>
                       )}
                     </td>

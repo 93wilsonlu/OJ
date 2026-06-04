@@ -15,6 +15,7 @@ from app.deps import get_current_user
 from app.main import app
 from app.models.exam import Exam
 from app.models.exam_assignment import ExamAssignment
+from app.models.exam_attempt import ExamAttempt
 from app.models.problem import Problem
 from app.models.submission import Submission
 from app.models.user import User
@@ -35,7 +36,14 @@ def make_user(role: str = "candidate") -> User:
     return u
 
 
-def make_exam(title: str = "Test Exam", *, ended: bool = False, show_score: bool = False) -> Exam:
+def make_exam(
+    title: str = "Test Exam",
+    *,
+    ended: bool = False,
+    show_score: bool = False,
+    anti_cheat_enabled: bool = False,
+    test_time_minutes: int | None = None,
+) -> Exam:
     e = Exam()
     e.exam_id = uuid.uuid4()
     e.title = title
@@ -43,9 +51,35 @@ def make_exam(title: str = "Test Exam", *, ended: bool = False, show_score: bool
     e.start_time = datetime.now(UTC) - timedelta(hours=2)
     e.end_time = datetime.now(UTC) + (timedelta(hours=-1) if ended else timedelta(hours=2))
     e.show_score = show_score
+    e.anti_cheat_enabled = anti_cheat_enabled
+    e.test_time_minutes = test_time_minutes
     e.created_by = uuid.uuid4()
     e.created_at = datetime.now(UTC)
     return e
+
+
+def make_attempt(
+    exam_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    *,
+    status: str = "in_progress",
+    started_at: datetime | None = None,
+    deadline_at: datetime | None = None,
+) -> ExamAttempt:
+    started_at = started_at or datetime.now(UTC) - timedelta(minutes=5)
+    a = ExamAttempt()
+    a.attempt_id = uuid.uuid4()
+    a.exam_id = exam_id
+    a.candidate_id = candidate_id
+    a.started_at = started_at
+    a.deadline_at = deadline_at or started_at + timedelta(minutes=30)
+    a.ended_at = None
+    a.status = status
+    a.fullscreen_exit_started_at = None
+    a.force_end_at = None
+    a.created_at = started_at
+    a.updated_at = started_at
+    return a
 
 
 def make_problem(title: str = "Two Sum") -> Problem:
