@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 
@@ -20,6 +21,7 @@ METRIC_JUDGE_DURATION_TOTAL = "oj:metrics:judge:duration_total_seconds"
 METRIC_JUDGE_DURATION_COUNT = "oj:metrics:judge:duration_count"
 METRIC_STUCK_MARKED = "oj:metrics:stuck_marked_total"
 WORKER_HEARTBEAT_KEY = "oj:worker:last_heartbeat"
+READINESS_CHECK_TIMEOUT_SECONDS = 1.0
 
 QUEUE_LENGTH = Gauge("oj_queue_length", "Number of jobs waiting in the judge queue.")
 JUDGE_SUCCESS_TOTAL = Gauge("oj_judge_success_total", "Judge jobs completed successfully.")
@@ -61,7 +63,7 @@ async def check_db() -> DependencyStatus:
 async def check_redis() -> DependencyStatus:
     try:
         client = get_redis_client()
-        await anyio.to_thread.run_sync(client.ping)
+        await anyio.to_thread.run_sync(client.ping, abandon_on_cancel=True)
         return DependencyStatus(ok=True, detail="ok")
     except Exception as exc:
         return DependencyStatus(ok=False, detail=str(exc))
@@ -70,7 +72,8 @@ async def check_redis() -> DependencyStatus:
 async def check_storage() -> DependencyStatus:
     try:
         exists = await anyio.to_thread.run_sync(
-            lambda: storage.get_minio().bucket_exists(settings.MINIO_BUCKET)
+            lambda: storage.get_minio().bucket_exists(settings.MINIO_BUCKET),
+            abandon_on_cancel=True,
         )
         if exists:
             return DependencyStatus(ok=True, detail="ok")
@@ -79,12 +82,24 @@ async def check_storage() -> DependencyStatus:
         return DependencyStatus(ok=False, detail=str(exc))
 
 
+async def _check_with_timeout(check) -> DependencyStatus:
+    try:
+        with anyio.fail_after(READINESS_CHECK_TIMEOUT_SECONDS):
+            return await check()
+    except TimeoutError:
+        return DependencyStatus(
+            ok=False,
+            detail=f"timeout after {READINESS_CHECK_TIMEOUT_SECONDS}s",
+        )
+
+
 async def readiness_report() -> dict[str, object]:
-    checks = {
-        "db": await check_db(),
-        "redis": await check_redis(),
-        "storage": await check_storage(),
-    }
+    db, redis_status, storage_status = await asyncio.gather(
+        _check_with_timeout(check_db),
+        _check_with_timeout(check_redis),
+        _check_with_timeout(check_storage),
+    )
+    checks = {"db": db, "redis": redis_status, "storage": storage_status}
     return {
         "status": "ready" if all(check.ok for check in checks.values()) else "not_ready",
         "checks": {
