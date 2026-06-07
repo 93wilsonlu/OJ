@@ -207,9 +207,12 @@ describe('ProblemEditor', () => {
     const languageSelect = screen.getByRole('combobox', { name: 'Language' })
     await waitFor(() => expect(languageSelect).toHaveValue('cpp17'))
 
-    fireEvent.change(screen.getByLabelText('Code editor'), {
+    const editor = screen.getByLabelText('Code editor')
+    fireEvent.change(editor, {
       target: { value: 'int main() { return 0; }' },
     })
+    await waitFor(() => expect(editor).toHaveValue('int main() { return 0; }'))
+
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     await waitFor(() => {
@@ -257,9 +260,12 @@ describe('ProblemEditor', () => {
 
     await screen.findByRole('heading', { name: 'Two Sum' })
     await enterFullscreen()
-    fireEvent.change(screen.getByLabelText('Code editor'), {
+    const editor = screen.getByLabelText('Code editor')
+    fireEvent.change(editor, {
       target: { value: 'int main() { return 0; }' },
     })
+    await waitFor(() => expect(editor).toHaveValue('int main() { return 0; }'))
+
     fireEvent.change(screen.getByPlaceholderText('Type stdin for this run...'), {
       target: { value: '4 9\n2 7 11 15' },
     })
