@@ -172,6 +172,33 @@ docker compose restart api
 docker compose restart judge-worker
 ```
 
+## CI/CD Deployment
+
+GitHub Actions deploys to the GCE VM after the `CI` workflow succeeds on a
+`main` branch push. Pull request branches do not deploy to the production VM, and
+the deploy workflow no longer runs in parallel with CI. The deploy workflow also
+keeps `workflow_dispatch` enabled for manual deployments.
+
+The workflow uses these GitHub Actions secrets:
+
+- `GCE_HOST`: VM external host or IP address.
+- `GCE_USER`: SSH user on the VM.
+- `GCE_SSH_PRIVATE_KEY_B64`: base64-encoded private key accepted by the VM.
+
+Before the first deployment, create `$HOME/oj/.env` on the VM. The workflow
+preserves that file across deployments, replaces the rest of `$HOME/oj` with the
+checked-out commit that passed CI, and then runs:
+
+```bash
+docker compose up -d --build --remove-orphans
+docker compose ps
+```
+
+The host Nginx and Certbot HTTPS configuration live outside the repository under
+`/etc/nginx` and `/etc/letsencrypt`, so CI/CD does not overwrite them. The
+Compose frontend Nginx remains bound to `127.0.0.1:8080` and is served publicly
+through the host Nginx reverse proxy.
+
 ## Operational Verification
 
 The current deployed VM was checked with:
