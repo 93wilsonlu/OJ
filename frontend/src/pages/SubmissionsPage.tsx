@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/errors'
 import { apiListSubmissions } from '../api/submissions'
 import VerdictBadge from '../components/VerdictBadge'
@@ -16,6 +16,7 @@ function uniqueVerdicts(submissions: SubmissionListItem[]) {
 }
 
 export default function SubmissionsPage() {
+  const { examId } = useParams<{ examId?: string }>()
   const { user, getAccessToken } = useAuth()
   const [submissions, setSubmissions] = useState<SubmissionListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,7 +35,10 @@ export default function SubmissionsPage() {
         const token = await getAccessToken()
         if (!token) throw new Error('Session expired. Please sign in again.')
         const candidate = appliedQuery.trim()
-        const data = await apiListSubmissions(token, candidate ? { candidate } : undefined)
+        const data = await apiListSubmissions(token, {
+          ...(examId ? { exam_id: examId } : {}),
+          ...(candidate ? { candidate } : {}),
+        })
         if (!cancelled) setSubmissions(data)
       } catch (e) {
         if (!cancelled) setError(getErrorMessage(e, 'Failed to load submissions'))
@@ -47,7 +51,7 @@ export default function SubmissionsPage() {
     return () => {
       cancelled = true
     }
-  }, [appliedQuery, getAccessToken])
+  }, [appliedQuery, examId, getAccessToken])
 
   if (loading) {
     return <div className="p-8 text-oj-fg-muted text-sm font-mono">Loading submissions...</div>
@@ -204,7 +208,9 @@ export default function SubmissionsPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
-                        to={`/submissions/${submission.submission_id}`}
+                        to={examId
+                          ? `/exams/${examId}/submissions/${submission.submission_id}`
+                          : `/submissions/${submission.submission_id}`}
                         className="text-xs text-oj-accent hover:underline"
                       >
                         View

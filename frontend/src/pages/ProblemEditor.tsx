@@ -1,15 +1,15 @@
 import Editor from '@monaco-editor/react'
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/errors'
-import { apiListExamProblems } from '../api/exams'
+import { apiGetExamAccess, apiListExamProblems } from '../api/exams'
 import { apiCreateSubmission, apiCreateSubmissionRun, apiGetSubmissionRun } from '../api/submissions'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
-import { useExamProctoring } from '../hooks/useExamProctoring'
 import { useSubmissionPoller } from '../hooks/useSubmissionPoller'
-import type { ExamProblem } from '../types/exam'
+import type { ExamAccess, ExamProblem } from '../types/exam'
 import type { SubmissionRunResult, SubmissionStatus } from '../types/submission'
+import { clearActiveExamLock, setActiveExamLock } from '../utils/activeExamLock'
 
 const LANGUAGE_OPTIONS: Record<string, { label: string; monaco: string; starter: string }> = {
   python3: {
@@ -139,6 +139,8 @@ function SubmissionPanel({
   runtime,
   memory,
   error,
+  submissionId,
+  examId,
 }: {
   status: SubmissionStatus | null
   verdict: string | null
@@ -148,6 +150,8 @@ function SubmissionPanel({
   runtime: number | null | undefined
   memory: number | null | undefined
   error: string | null | undefined
+  submissionId?: string | null
+  examId?: string
 }) {
   if (!status) {
     return (
@@ -165,6 +169,14 @@ function SubmissionPanel({
       <div className="flex flex-wrap items-center gap-3">
         <VerdictBadge verdict={display} showFull />
         {active && <span className="text-xs text-oj-fg-muted font-mono animate-pulse">Waiting for judge...</span>}
+        {!active && submissionId && examId && (
+          <Link
+            to={`/exams/${examId}/submissions/${submissionId}`}
+            className="text-xs font-semibold text-oj-accent hover:underline"
+          >
+            View submission
+          </Link>
+        )}
       </div>
 
       <div className="grid gap-2 sm:grid-cols-4">
@@ -195,56 +207,13 @@ function ResultMetric({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ProctoringOverlay({
-  started,
-  violating,
-  remainingSeconds,
-  error,
-  onEnterFullscreen,
-}: {
-  started: boolean
-  violating: boolean
-  remainingSeconds: number
-  error: string | null
-  onEnterFullscreen: () => void
-}) {
-  if (started && !violating) return null
-
-  return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-oj-bg/95 px-4">
-      <div className="max-w-md rounded-lg border border-oj-border bg-white p-6 text-center shadow-lg">
-        <h2 className="text-lg font-semibold text-oj-fg">
-          {started ? 'Return to fullscreen' : 'Fullscreen required'}
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-oj-fg-muted">
-          {started
-            ? `You must return to fullscreen and keep this tab focused. This exam will lock in ${remainingSeconds} seconds.`
-            : 'Enter fullscreen mode to start working in the exam editor.'}
-        </p>
-        {error && (
-          <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={onEnterFullscreen}
-          className="mt-5 rounded-md bg-oj-accent px-4 py-2 text-sm font-semibold text-white hover:bg-oj-accent-dim"
-        >
-          Enter fullscreen
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export default function ProblemEditor() {
   const { examId, problemId } = useParams<{ examId: string; problemId: string }>()
   const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
   const { getAccessToken } = useAuth()
 
   const [problem, setProblem] = useState<ExamProblem | null>(null)
+  const [access, setAccess] = useState<ExamAccess | null>(null)
   const [problemError, setProblemError] = useState<string | null>(null)
   const [language, setLanguage] = useState('python3')
   const [code, setCode] = useState(() => loadDraft(examId, problemId, 'python3'))
@@ -262,8 +231,21 @@ export default function ProblemEditor() {
     submissionId,
     getAccessToken,
   )
-  const proctoring = useExamProctoring(examId, getAccessToken)
-  const controlsDisabled = proctoring.locked || !proctoring.started || proctoring.violating
+  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement))
+
+  useEffect(() => {
+    if (!access?.requires_fullscreen) return
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    }
+  }, [access])
+
+  const controlsDisabled = !access?.can_solve || Boolean(access?.requires_fullscreen && !isFullscreen)
+
 
   const availableLanguages = useMemo(() => {
     if (!problem?.allowed_langs.length) return ['python3', 'cpp17']
@@ -281,12 +263,17 @@ export default function ProblemEditor() {
       try {
         const token = await getAccessToken()
         if (!token) throw new Error('Session expired. Please sign in again.')
+        const accessData = await apiGetExamAccess(token, currentExamId)
+        if (!accessData.can_view_problems) throw new Error('Exam problems are not available.')
         // Candidates read problems via the exam-scoped endpoint, not the
         // staff-only problem bank (/problems/{id}).
         const problems = await apiListExamProblems(token, currentExamId)
         const found = problems.find((p) => p.problem_id === currentProblemId)
         if (!found) throw new Error('Problem not found in this exam.')
-        if (!cancelled) setProblem(found)
+        if (!cancelled) {
+          setAccess(accessData)
+          setProblem(found)
+        }
       } catch (e) {
         if (!cancelled) setProblemError(getErrorMessage(e, 'Failed to load problem'))
       }
@@ -317,6 +304,18 @@ export default function ProblemEditor() {
       setCode(loadDraft(examId, problemId, nextLanguage))
     }
   }, [availableLanguages, examId, language, problem, problemId])
+
+  useEffect(() => {
+    if (!examId || !problemId || !access) return
+    if (access.requires_fullscreen && access.can_solve) {
+      setActiveExamLock({
+        examId,
+        path: `/exams/${examId}`,
+      })
+      return
+    }
+    clearActiveExamLock(examId)
+  }, [access, examId, problemId])
 
   useEffect(() => {
     const key = draftKey(examId, problemId, language)
@@ -355,12 +354,6 @@ export default function ProblemEditor() {
       if (timer) window.clearTimeout(timer)
     }
   }, [getAccessToken, runId])
-
-  useEffect(() => {
-    if (proctoring.locked && examId) {
-      navigate(`/exams/${examId}`, { replace: true })
-    }
-  }, [examId, navigate, proctoring.locked])
 
   function handleLanguageChange(nextLanguage: string) {
     const currentKey = draftKey(examId, problemId, language)
@@ -445,13 +438,6 @@ export default function ProblemEditor() {
 
   return (
     <div className="relative flex h-[calc(100dvh-3.5rem)] flex-col bg-oj-bg">
-      <ProctoringOverlay
-        started={proctoring.started}
-        violating={proctoring.violating}
-        remainingSeconds={proctoring.remainingSeconds}
-        error={proctoring.error}
-        onEnterFullscreen={proctoring.enterFullscreen}
-      />
       <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-oj-border bg-oj-surface px-4 py-2">
         <span className="text-xs font-mono text-oj-fg-muted">Exam workspace</span>
         <div className="min-w-0 flex-1">
@@ -498,6 +484,7 @@ export default function ProblemEditor() {
         >
           {submitting ? 'Submitting...' : 'Submit'}
         </button>
+
       </header>
 
       <main className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(320px,42%)_minmax(0,1fr)]">
@@ -585,6 +572,8 @@ export default function ProblemEditor() {
               runtime={judgeResult?.execution_time}
               memory={judgeResult?.memory_usage}
               error={judgeResult?.error_message}
+              submissionId={submissionData?.submission_id ?? submissionId}
+              examId={examId}
             />
           </footer>
         </section>

@@ -84,7 +84,7 @@ services:
   judge-monitor:
     build:
       context: ./backend
-      dockerfile: Dockerfile.worke
+      dockerfile: Dockerfile.worker
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
@@ -101,7 +101,7 @@ services:
   run-worker:
     build:
       context: ./backend
-      dockerfile: Dockerfile.worke
+      dockerfile: Dockerfile.worker
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
@@ -149,6 +149,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro

@@ -103,7 +103,7 @@ describe('ExamManagePage - Initial Rendering', () => {
     expect(screen.getByRole('button', { name: 'Create exam' })).toBeInTheDocument()
   })
 
-  test('loads existing exam for editing', async () => {
+  test('loads existing exam for editing and shows actions', async () => {
     vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue({
       exam_id: 'exam123',
       title: 'Backend Interview',
@@ -111,6 +111,8 @@ describe('ExamManagePage - Initial Rendering', () => {
       start_time: '2026-06-01T10:00:00Z',
       end_time: '2026-06-01T12:00:00Z',
       show_score: false,
+      anti_cheat_enabled: false,
+      test_time_minutes: null,
       created_by: null,
       created_at: '2026-05-31T00:00:00Z',
     } as any)
@@ -193,6 +195,10 @@ describe('ExamManagePage - Form Interactions and Saving', () => {
       start_time: '2026-06-01T10:00:00Z',
       end_time: '2026-06-01T12:00:00Z',
       show_score: false,
+      anti_cheat_enabled: false,
+      test_time_minutes: null,
+      created_by: null,
+      created_at: '2026-05-31T00:00:00Z',
     } as any)
     
     // Originally c1 is assigned to p1
@@ -229,8 +235,8 @@ describe('ExamManagePage - Form Interactions and Saving', () => {
 
   test('prompts confirmation and deletes exam', async () => {
     const user = setupUser()
-    const mockDelete = vi.spyOn(examsApi, 'apiDeleteExam').mockResolvedValue(undefined)
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const mockDelete = vi.spyOn(examsApi, 'apiDeleteExam').mockResolvedValue(undefined as any)
 
     vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue({
       exam_id: 'exam123',
@@ -304,31 +310,32 @@ describe('ExamManagePage - Filtering and Bulk Actions', () => {
     await user.type(searchInput, 'XYZ')
     expect(screen.getByText('No matching candidates.')).toBeInTheDocument()
   })
+  
   test('selects and clears all items', async () => {
-      const user = setupUser()
-      renderPage('/exams/new')
+    const user = setupUser()
+    renderPage('/exams/new')
 
-      await waitFor(() => {
-        expect(screen.getByText('Problem 1')).toBeInTheDocument()
-      })
-
-      const selectAllBtns = screen.getAllByRole('button', { name: 'Select all' })
-      const clearBtns = screen.getAllByRole('button', { name: 'Clear' })
-
-      // Problems: Select All
-      await user.click(selectAllBtns[0])
-      expect(screen.getByText('Problems').parentElement?.textContent).toContain('(2)')
-
-      // Problems: Clear All
-      await user.click(clearBtns[0])
-      expect(screen.getByText('Problems').parentElement?.textContent).toContain('(0)')
-
-      // Candidates: Select All
-      await user.click(selectAllBtns[1])
-      expect(screen.getByText('Candidates').parentElement?.textContent).toContain('(2)')
-
-      // Candidates: Clear All
-      await user.click(clearBtns[1])
-      expect(screen.getByText('Candidates').parentElement?.textContent).toContain('(0)')
+    await waitFor(() => {
+      expect(screen.getByText('Problem 1')).toBeInTheDocument()
     })
+
+    const selectAllBtns = screen.getAllByRole('button', { name: 'Select all' })
+    const clearBtns = screen.getAllByRole('button', { name: 'Clear' })
+
+    // Problems: Select All
+    await user.click(selectAllBtns[0])
+    expect(screen.getByText('Problems').parentElement?.textContent).toContain('(2)')
+
+    // Problems: Clear All
+    await user.click(clearBtns[0])
+    expect(screen.getByText('Problems').parentElement?.textContent).toContain('(0)')
+
+    // Candidates: Select All
+    await user.click(selectAllBtns[1])
+    expect(screen.getByText('Candidates').parentElement?.textContent).toContain('(2)')
+
+    // Candidates: Clear All
+    await user.click(clearBtns[1])
+    expect(screen.getByText('Candidates').parentElement?.textContent).toContain('(0)')
+  })
 })

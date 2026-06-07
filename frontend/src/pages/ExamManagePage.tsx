@@ -25,6 +25,8 @@ interface FormData {
   start_time: string
   end_time: string
   show_score: boolean
+  anti_cheat_enabled: boolean
+  test_time_minutes: string
 }
 
 const EMPTY_FORM: FormData = {
@@ -33,6 +35,8 @@ const EMPTY_FORM: FormData = {
   start_time: '',
   end_time: '',
   show_score: false,
+  anti_cheat_enabled: false,
+  test_time_minutes: '',
 }
 
 function toLocalDatetime(iso: string): string {
@@ -107,6 +111,8 @@ export default function ExamManagePage() {
             start_time: toLocalDatetime(examData.start_time),
             end_time: toLocalDatetime(examData.end_time),
             show_score: examData.show_score,
+            anti_cheat_enabled: examData.anti_cheat_enabled,
+            test_time_minutes: examData.test_time_minutes ? String(examData.test_time_minutes) : '',
           })
           setSelectedProblems([...new Set(assignments.map((a) => a.problem_id))])
           setSelectedCandidates([...new Set(assignments.map((a) => a.candidate_id))])
@@ -132,6 +138,11 @@ export default function ExamManagePage() {
       setError('Title, start time, and end time are required.')
       return
     }
+    const testTimeMinutes = form.test_time_minutes ? Number(form.test_time_minutes) : null
+    if (form.anti_cheat_enabled && (!testTimeMinutes || testTimeMinutes <= 0)) {
+      setError('Test time is required when anti-cheat is enabled.')
+      return
+    }
 
     setSaving(true)
     setError(null)
@@ -142,6 +153,8 @@ export default function ExamManagePage() {
         start_time: toIsoDatetime(form.start_time),
         end_time: toIsoDatetime(form.end_time),
         show_score: form.show_score,
+        anti_cheat_enabled: form.anti_cheat_enabled,
+        test_time_minutes: form.anti_cheat_enabled ? testTimeMinutes : null,
       }
 
       let targetId = examId
@@ -337,6 +350,36 @@ export default function ExamManagePage() {
           />
           <span className="text-sm text-oj-fg">Show score to candidates</span>
         </label>
+
+        <div className="grid gap-4 border-t border-oj-border pt-4 sm:grid-cols-[1fr_180px]">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.anti_cheat_enabled}
+              onChange={(event) => setForm((current) => ({
+                ...current,
+                anti_cheat_enabled: event.target.checked,
+              }))}
+              className="accent-oj-accent"
+            />
+            <span className="text-sm text-oj-fg">Require fullscreen anti-cheat</span>
+          </label>
+          <label className="block">
+            <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Test time</span>
+            <input
+              type="number"
+              min={1}
+              value={form.test_time_minutes}
+              onChange={(event) => setForm((current) => ({
+                ...current,
+                test_time_minutes: event.target.value,
+              }))}
+              disabled={!form.anti_cheat_enabled}
+              className={`${inputCls} disabled:cursor-not-allowed disabled:opacity-50`}
+              placeholder="Minutes"
+            />
+          </label>
+        </div>
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

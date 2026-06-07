@@ -12,7 +12,30 @@ from app.config import settings
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
+# Monkeypatch bcrypt to avoid ValueError in bcrypt >= 5.0.0 (enforces 72-byte password limit)
+try:
+    import bcrypt
+    _orig_hashpw = bcrypt.hashpw
+    _orig_checkpw = getattr(bcrypt, "checkpw", None)
+
+    def _patched_hashpw(password: bytes, salt: bytes) -> bytes:
+        if isinstance(password, bytes) and len(password) > 72:
+            password = password[:72]
+        return _orig_hashpw(password, salt)
+
+    bcrypt.hashpw = _patched_hashpw
+
+    if _orig_checkpw:
+        def _patched_checkpw(password: bytes, hashed_password: bytes) -> bool:
+            if isinstance(password, bytes) and len(password) > 72:
+                password = password[:72]
+            return _orig_checkpw(password, hashed_password)
+        bcrypt.checkpw = _patched_checkpw
+except Exception:
+    pass
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 
 def hash_password(plain: str) -> str:
