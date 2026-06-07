@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, vi } from 'vitest'
 import * as examsApi from '../src/api/exams'
+import { ApiError } from '../src/api/errors'
 import * as submissionsApi from '../src/api/submissions'
 import * as useAuthModule from '../src/hooks/useAuth'
 import CandidateDashboard from '../src/pages/CandidateDashboard'
@@ -182,5 +183,159 @@ describe('CandidateDashboard', () => {
     await waitFor(() =>
       expect(screen.getByText('No exams match your filters.')).toBeInTheDocument(),
     )
+  })
+
+  test('renders interviewer view with staff links', async () => {
+    vi.spyOn(useAuthModule, 'useAuth').mockReturnValue({
+      user: {
+        user_id: 'interviewer-1',
+        name: 'Interviewer',
+        email: 'interviewer@example.com',
+        role: 'interviewer',
+      },
+      accessToken: 'token',
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn().mockResolvedValue('token'),
+    })
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Exams' })
+    expect(screen.getByRole('link', { name: 'New Exam' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Results' })).toHaveLength(3)
+    expect(screen.getAllByRole('link', { name: 'Manage' })).toHaveLength(3)
+  })
+
+  test('candidate starts an exam', async () => {
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockImplementation(async (_token, examId) => ({
+      exam_id: examId,
+      status_label: 'not_started',
+      can_view_exam: true,
+      can_view_problems: false,
+      can_start: examId === 'active-exam',
+      can_solve: false,
+      can_submit: false,
+      can_edit_submission: false,
+      can_view_submissions: true,
+      requires_fullscreen: true,
+      attempt_started_at: null,
+      attempt_deadline_at: null,
+      attempt_ended_at: null,
+    }))
+
+    const startSpy = vi.spyOn(examsApi, 'apiStartExam').mockResolvedValue({} as any)
+    const reqFullscreenMock = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      writable: true,
+      configurable: true,
+      value: reqFullscreenMock
+    })
+
+    const exams = makeExams()
+    exams[0].anti_cheat_enabled = true
+    vi.spyOn(examsApi, 'apiListExams').mockResolvedValue(exams)
+
+    renderPage()
+
+    const startBtn = await screen.findByRole('button', { name: 'Start' })
+    await act(async () => {
+      startBtn.click()
+    })
+
+    expect(startSpy).toHaveBeenCalledWith('token', 'active-exam')
+    expect(reqFullscreenMock).toHaveBeenCalled()
+
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      writable: true,
+      configurable: true,
+      value: undefined
+    })
+  })
+
+  test('candidate continues an exam', async () => {
+    const exams = makeExams()
+    exams[0].anti_cheat_enabled = true
+    vi.spyOn(examsApi, 'apiListExams').mockResolvedValue(exams)
+
+    const reqFullscreenMock = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      writable: true,
+      configurable: true,
+      value: reqFullscreenMock
+    })
+
+    renderPage()
+
+    const continueBtn = await screen.findByRole('button', { name: 'Continue' })
+    await act(async () => {
+      continueBtn.click()
+    })
+
+    expect(reqFullscreenMock).toHaveBeenCalled()
+
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      writable: true,
+      configurable: true,
+      value: undefined
+    })
+  })
+
+  test('displays error message if start exam fails in dashboard', async () => {
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockImplementation(async (_token, examId) => ({
+      exam_id: examId,
+      status_label: 'not_started',
+      can_view_exam: true,
+      can_view_problems: false,
+      can_start: examId === 'active-exam',
+      can_solve: false,
+      can_submit: false,
+      can_edit_submission: false,
+      can_view_submissions: true,
+      requires_fullscreen: false,
+      attempt_started_at: null,
+      attempt_deadline_at: null,
+      attempt_ended_at: null,
+    }))
+
+    vi.spyOn(examsApi, 'apiStartExam').mockRejectedValue(new Error('Start failed'))
+
+    renderPage()
+
+    const startBtn = await screen.findByRole('button', { name: 'Start' })
+    await act(async () => {
+      startBtn.click()
+    })
+
+    expect(await screen.findByText('Error: Start failed')).toBeInTheDocument()
+  })
+
+  test('displays locked state if apiListExamProblems returns proctoring violation', async () => {
+    vi.spyOn(examsApi, 'apiListExamProblems').mockRejectedValue(
+      new ApiError(403, 'Proctoring violation', 'Proctoring violation')
+    )
+
+    renderPage()
+
+    expect((await screen.findAllByText('Locked')).length).toBeGreaterThan(0)
+  })
+
+  test('displays error banner if loading exams fails', async () => {
+    vi.spyOn(examsApi, 'apiListExams').mockRejectedValue(new Error('Failed to fetch exams'))
+
+    renderPage()
+
+    expect(await screen.findByText('Error: Failed to fetch exams')).toBeInTheDocument()
+  })
+
+  test('handles dashboard periodic timer', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'My Exams' })
+
+    vi.useFakeTimers()
+    act(() => {
+      vi.advanceTimersByTime(30000)
+    })
+    vi.useRealTimers()
   })
 })

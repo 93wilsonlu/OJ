@@ -756,3 +756,284 @@ async def test_get_owned_exam_allows_admin():
     db.get = AsyncMock(return_value=exam)
     result = await get_owned_exam(db, exam.exam_id, uuid.uuid4(), "admin")
     assert result is exam
+
+
+# --- Additional Router Integration Tests ---
+
+@patch("app.routers.exam.proctoring_service.get_candidate_state", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_get_candidate_state_route(mock_get_exam, mock_get_state):
+    exam = _make_exam()
+    mock_get_exam.return_value = exam
+    
+    state = ExamCandidateState(
+        exam_id=exam.exam_id,
+        candidate_id=uuid.uuid4(),
+        status="active",
+        last_seen_at=datetime.now(UTC)
+    )
+    mock_get_state.return_value = state
+    
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get(f"/api/v1/exams/{exam.exam_id}/candidate-state")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "active"
+
+@patch("app.routers.exam.exam_service.get_exam_attempt", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_get_exam_attempt_route(mock_get_exam, mock_get_attempt):
+    exam = _make_exam()
+    mock_get_exam.return_value = exam
+    
+    attempt = _make_attempt(exam.exam_id, uuid.uuid4())
+    mock_get_attempt.return_value = attempt
+    
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get(f"/api/v1/exams/{exam.exam_id}/attempt")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "in_progress"
+
+@patch("app.routers.exam.exam_service.get_exam_access", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_get_exam_access_route(mock_get_exam, mock_get_access):
+    exam = _make_exam()
+    mock_get_exam.return_value = exam
+    
+    # Mock return access object that works with vars()
+    class MockAccess:
+        def __init__(self):
+            self.exam_id = exam.exam_id
+            self.status_label = "can_start"
+            self.can_view_exam = True
+            self.can_start = True
+            self.can_solve = False
+            self.can_view_submissions = False
+            self.can_view_problems = False
+            self.can_submit = False
+            self.can_edit_submission = False
+            self.requires_fullscreen = False
+            self.test_time_minutes = None
+            self.deadline_at = None
+            self.attempt_started_at = None
+            self.attempt_deadline_at = None
+            self.attempt_ended_at = None
+            self.fullscreen_grace_seconds = 5
+
+    mock_get_access.return_value = MockAccess()
+    
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.get(f"/api/v1/exams/{exam.exam_id}/access")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+    assert resp.json()["status_label"] == "can_start"
+
+@patch("app.routers.exam.exam_service.start_exam_attempt", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_start_exam_route(mock_get_exam, mock_start):
+    exam = _make_exam()
+    mock_get_exam.return_value = exam
+    
+    attempt = _make_attempt(exam.exam_id, uuid.uuid4())
+    mock_start.return_value = attempt
+    
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.post(f"/api/v1/exams/{exam.exam_id}/start")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "in_progress"
+
+@patch("app.routers.exam.exam_service.end_exam_attempt", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_end_exam_route(mock_get_exam, mock_end):
+    exam = _make_exam()
+    mock_get_exam.return_value = exam
+    
+    attempt = _make_attempt(exam.exam_id, uuid.uuid4())
+    attempt.status = "ended"
+    mock_end.return_value = attempt
+    
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.post(f"/api/v1/exams/{exam.exam_id}/end")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ended"
+
+@patch("app.routers.exam.exam_service.register_fullscreen_exit", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_fullscreen_exit_route(mock_get_exam, mock_exit):
+    exam = _make_exam()
+    mock_get_exam.return_value = exam
+    
+    attempt = _make_attempt(exam.exam_id, uuid.uuid4())
+    mock_exit.return_value = attempt
+    
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.post(f"/api/v1/exams/{exam.exam_id}/fullscreen-exit")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+
+@patch("app.routers.exam.exam_service.register_fullscreen_return", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_fullscreen_return_route(mock_get_exam, mock_return):
+    exam = _make_exam()
+    mock_get_exam.return_value = exam
+    
+    attempt = _make_attempt(exam.exam_id, uuid.uuid4())
+    mock_return.return_value = attempt
+    
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.post(f"/api/v1/exams/{exam.exam_id}/fullscreen-return")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+
+@patch("app.routers.exam.proctoring_service.register_event", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_exam_for_user", new_callable=AsyncMock)
+def test_proctoring_events_route(mock_get_exam, mock_register):
+    exam = _make_exam()
+    mock_get_exam.return_value = exam
+    
+    state = ExamCandidateState(
+        exam_id=exam.exam_id,
+        candidate_id=uuid.uuid4(),
+        status="active",
+        last_seen_at=datetime.now(UTC)
+    )
+    mock_register.return_value = state
+    
+    candidate = _make_user("candidate")
+    client = _client_for(candidate)
+    try:
+        resp = client.post(
+            f"/api/v1/exams/{exam.exam_id}/proctoring-events",
+            json={"event_type": "tab-switch", "violating": True}
+        )
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+
+@patch("app.routers.exam.exam_service.update_exam", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_owned_exam", new_callable=AsyncMock)
+def test_update_exam_route(mock_get_owned, mock_update):
+    exam = _make_exam()
+    mock_get_owned.return_value = exam
+    mock_update.return_value = exam
+    
+    interviewer = _make_user("interviewer")
+    client = _client_for(interviewer)
+    try:
+        resp = client.patch(
+            f"/api/v1/exams/{exam.exam_id}",
+            json={"title": "Updated Title"}
+        )
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+    mock_update.assert_called_once()
+
+@patch("app.routers.exam.exam_service.delete_exam", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_owned_exam", new_callable=AsyncMock)
+def test_delete_exam_route(mock_get_owned, mock_delete):
+    exam = _make_exam()
+    mock_get_owned.return_value = exam
+    
+    interviewer = _make_user("interviewer")
+    client = _client_for(interviewer)
+    try:
+        resp = client.delete(f"/api/v1/exams/{exam.exam_id}")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 204
+    mock_delete.assert_called_once()
+
+@patch("app.routers.exam.exam_service.list_assignments", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_owned_exam", new_callable=AsyncMock)
+def test_list_assignments_route(mock_get_owned, mock_list):
+    exam = _make_exam()
+    mock_get_owned.return_value = exam
+    mock_list.return_value = []
+    
+    interviewer = _make_user("interviewer")
+    client = _client_for(interviewer)
+    try:
+        resp = client.get(f"/api/v1/exams/{exam.exam_id}/assignments")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 200
+
+@patch("app.routers.exam.exam_service.create_assignment", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_owned_exam", new_callable=AsyncMock)
+def test_create_assignment_route(mock_get_owned, mock_create):
+    exam = _make_exam()
+    mock_get_owned.return_value = exam
+    
+    assignment = ExamAssignment(
+        assignment_id=uuid.uuid4(),
+        exam_id=exam.exam_id,
+        candidate_id=uuid.uuid4(),
+        problem_id=uuid.uuid4(),
+        created_at=datetime.now(UTC)
+    )
+    mock_create.return_value = assignment
+    
+    interviewer = _make_user("interviewer")
+    client = _client_for(interviewer)
+    try:
+        resp = client.post(
+            f"/api/v1/exams/{exam.exam_id}/assignments",
+            json={"candidate_id": str(uuid.uuid4()), "problem_id": str(uuid.uuid4())}
+        )
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 201
+
+@patch("app.routers.exam.exam_service.delete_assignment", new_callable=AsyncMock)
+@patch("app.routers.exam.exam_service.get_owned_exam", new_callable=AsyncMock)
+def test_delete_assignment_route(mock_get_owned, mock_delete):
+    exam = _make_exam()
+    mock_get_owned.return_value = exam
+    
+    interviewer = _make_user("interviewer")
+    client = _client_for(interviewer)
+    try:
+        resp = client.delete(f"/api/v1/exams/{exam.exam_id}/assignments/{uuid.uuid4()}")
+    finally:
+        _clear_overrides()
+        
+    assert resp.status_code == 204
+    mock_delete.assert_called_once()
+

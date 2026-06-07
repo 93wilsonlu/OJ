@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, vi } from 'vitest'
 import { ApiError } from '../src/api/errors'
@@ -205,5 +205,229 @@ describe('ExamView', () => {
     await screen.findByRole('heading', { name: 'Sample Coding Interview' })
     expect(screen.getByText(/fullscreen policy was violated/i)).toBeInTheDocument()
     expect(screen.queryByText(/^Error:/i)).not.toBeInTheDocument()
+  })
+
+  test('renders staff view correctly', async () => {
+    mockAuth('interviewer')
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Sample Coding Interview' })
+    expect(screen.getByRole('heading', { name: 'Problems' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'View' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'End Test' })).not.toBeInTheDocument()
+  })
+
+  test('candidate starts an exam with anti-cheat enabled', async () => {
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockResolvedValue({
+      exam_id: 'exam-1',
+      status_label: 'not_started',
+      can_view_exam: true,
+      can_view_problems: false,
+      can_start: true,
+      can_solve: false,
+      can_submit: false,
+      can_edit_submission: false,
+      can_view_submissions: true,
+      requires_fullscreen: true,
+      attempt_started_at: null,
+      attempt_deadline_at: null,
+      attempt_ended_at: null,
+    })
+    
+    const startSpy = vi.spyOn(examsApi, 'apiStartExam').mockResolvedValue({} as any)
+    const listProblemsSpy = vi.spyOn(examsApi, 'apiListExamProblems').mockResolvedValue(problems)
+    
+    let callCount = 0
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockImplementation(async () => {
+      callCount++
+      if (callCount === 1) {
+        return {
+          exam_id: 'exam-1',
+          status_label: 'not_started',
+          can_view_exam: true,
+          can_view_problems: false,
+          can_start: true,
+          can_solve: false,
+          can_submit: false,
+          can_edit_submission: false,
+          can_view_submissions: true,
+          requires_fullscreen: true,
+          attempt_started_at: null,
+          attempt_deadline_at: null,
+          attempt_ended_at: null,
+        }
+      }
+      return {
+        exam_id: 'exam-1',
+        status_label: 'in_progress',
+        can_view_exam: true,
+        can_view_problems: true,
+        can_start: false,
+        can_solve: true,
+        can_submit: true,
+        can_edit_submission: true,
+        can_view_submissions: true,
+        requires_fullscreen: true,
+        attempt_started_at: new Date().toISOString(),
+        attempt_deadline_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        attempt_ended_at: null,
+      }
+    })
+
+    const reqFullscreenMock = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      writable: true,
+      configurable: true,
+      value: reqFullscreenMock
+    })
+    vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue(makeExam({ anti_cheat_enabled: true }))
+
+    renderPage()
+
+    const startBtn = await screen.findByRole('button', { name: 'Start' })
+    await act(async () => {
+      startBtn.click()
+    })
+
+    expect(startSpy).toHaveBeenCalledWith('token', 'exam-1')
+    expect(reqFullscreenMock).toHaveBeenCalled()
+    expect(listProblemsSpy).toHaveBeenCalled()
+
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      writable: true,
+      configurable: true,
+      value: undefined
+    })
+  })
+
+  test('candidate ends an exam', async () => {
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockResolvedValue({
+      exam_id: 'exam-1',
+      status_label: 'in_progress',
+      can_view_exam: true,
+      can_view_problems: true,
+      can_start: false,
+      can_solve: true,
+      can_submit: true,
+      can_edit_submission: true,
+      can_view_submissions: true,
+      requires_fullscreen: true,
+      attempt_started_at: new Date().toISOString(),
+      attempt_deadline_at: null,
+      attempt_ended_at: null,
+    })
+    vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue(makeExam({ anti_cheat_enabled: true }))
+
+    const endSpy = vi.spyOn(examsApi, 'apiEndExam').mockResolvedValue({} as any)
+    const exitFullscreenMock = vi.fn().mockResolvedValue(undefined)
+    
+    Object.defineProperty(document, 'fullscreenElement', {
+      writable: true,
+      configurable: true,
+      value: {}
+    })
+    Object.defineProperty(document, 'exitFullscreen', {
+      writable: true,
+      configurable: true,
+      value: exitFullscreenMock
+    })
+
+    renderPage()
+
+    const endBtn = await screen.findByRole('button', { name: 'End Test' })
+    await act(async () => {
+      endBtn.click()
+    })
+
+    expect(endSpy).toHaveBeenCalledWith('token', 'exam-1')
+    expect(exitFullscreenMock).toHaveBeenCalled()
+
+    Object.defineProperty(document, 'fullscreenElement', {
+      writable: true,
+      configurable: true,
+      value: null
+    })
+    Object.defineProperty(document, 'exitFullscreen', {
+      writable: true,
+      configurable: true,
+      value: undefined
+    })
+  })
+
+  test('displays error message if start exam fails', async () => {
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockResolvedValue({
+      exam_id: 'exam-1',
+      status_label: 'not_started',
+      can_view_exam: true,
+      can_view_problems: false,
+      can_start: true,
+      can_solve: false,
+      can_submit: false,
+      can_edit_submission: false,
+      can_view_submissions: true,
+      requires_fullscreen: false,
+      attempt_started_at: null,
+      attempt_deadline_at: null,
+      attempt_ended_at: null,
+    })
+    vi.spyOn(examsApi, 'apiStartExam').mockRejectedValue(new Error('Network error'))
+
+    renderPage()
+
+    const startBtn = await screen.findByRole('button', { name: 'Start' })
+    await act(async () => {
+      startBtn.click()
+    })
+
+    expect(screen.getByText('Error: Network error')).toBeInTheDocument()
+  })
+
+  test('displays error message if end exam fails', async () => {
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockResolvedValue({
+      exam_id: 'exam-1',
+      status_label: 'in_progress',
+      can_view_exam: true,
+      can_view_problems: true,
+      can_start: false,
+      can_solve: true,
+      can_submit: true,
+      can_edit_submission: true,
+      can_view_submissions: true,
+      requires_fullscreen: true,
+      attempt_started_at: new Date().toISOString(),
+      attempt_deadline_at: null,
+      attempt_ended_at: null,
+    })
+    vi.spyOn(examsApi, 'apiGetExam').mockResolvedValue(makeExam({ anti_cheat_enabled: true }))
+    vi.spyOn(examsApi, 'apiEndExam').mockRejectedValue(new Error('Failed to end'))
+
+    renderPage()
+
+    const endBtn = await screen.findByRole('button', { name: 'End Test' })
+    await act(async () => {
+      endBtn.click()
+    })
+
+    expect(screen.getByText('Error: Failed to end')).toBeInTheDocument()
+  })
+
+  test('displays error message if load fails', async () => {
+    vi.spyOn(examsApi, 'apiGetExam').mockRejectedValue(new Error('Unauthorized load'))
+    
+    renderPage()
+    
+    await screen.findByText('Error: Unauthorized load')
+  })
+
+  test('advances periodic timer', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Sample Coding Interview' })
+    
+    vi.useFakeTimers()
+    act(() => {
+      vi.advanceTimersByTime(30000)
+    })
+    vi.useRealTimers()
   })
 })
