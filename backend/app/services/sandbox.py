@@ -13,12 +13,18 @@ PIDS_LIMIT = 64                     # blocks fork bombs from exhausting host PID
 CPU_NANO = 1_000_000_000            # 1 CPU
 SANDBOX_USER = "65534:65534"        # nobody:nogroup, numeric so no /etc/passwd lookup
 COMPILE_MEM = "512m"                # generous fixed budget for the compiler
-# tmpfs gives a writable /box and /tmp on top of a read-only rootfs; sizes also
-# cap disk-fill abuse. tmpfs usage counts against the memory cgroup.
-# /box is mounted exec so compiled binaries (./main) can run; Docker mounts tmpfs
-# noexec by default. /tmp stays noexec so untrusted code can't drop-and-run there.
-RUN_TMPFS = {"/box": "rw,exec,size=64m,mode=1777", "/tmp": "rw,size=64m,mode=1777"}
-COMPILE_TMPFS = {"/box": "rw,size=256m,mode=1777", "/tmp": "rw,size=256m,mode=1777"}
+# tmpfs gives the sandbox user writable space on top of a read-only rootfs; sizes
+# also cap disk-fill abuse. Directories are private to the sandbox user instead
+# of world-writable.
+TMPFS_OWNER = "uid=65534,gid=65534,mode=0700"
+RUN_TMPFS = {
+    "/box": f"rw,exec,size=64m,{TMPFS_OWNER},nosuid,nodev",
+    "/tmp": f"rw,size=64m,{TMPFS_OWNER},noexec,nosuid,nodev",
+}
+COMPILE_TMPFS = {
+    "/box": f"rw,size=256m,{TMPFS_OWNER},noexec,nosuid,nodev",
+    "/tmp": f"rw,size=256m,{TMPFS_OWNER},noexec,nosuid,nodev",
+}
 
 def _image(lang: str) -> str:
     return "python:3.12-slim" if lang == "python3" else "gcc:latest"
