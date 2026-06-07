@@ -8,10 +8,12 @@ services while keeping the judge worker on a controlled compute host.
 
 ## Current Demo Deployment
 
-- Demo URL: <http://104.199.188.64>
+- Demo URL: <https://oj.braveflamingdog.com>
+- VM external IP: `104.199.188.64`
 - Platform: GCP Compute Engine VM
 - Runtime: Docker Compose
-- Public entrypoint: Nginx on port `80`
+- Public entrypoint: host Nginx on ports `80` and `443`
+- App upstream: Docker Compose frontend Nginx bound to `127.0.0.1:8080`
 - Services: frontend, FastAPI API, PostgreSQL, Redis, MinIO, judge worker,
   Prometheus, and Grafana
 
@@ -69,12 +71,73 @@ Start the stack:
 docker compose up -d --build
 ```
 
+The Compose frontend Nginx binds to `127.0.0.1:8080`, so a host-level reverse
+proxy should publish the site on public ports `80` and `443`.
+
 Check service status and logs:
 
 ```bash
 docker compose ps
 docker compose logs -f api
 docker compose logs -f judge-worker
+```
+
+## HTTPS Setup
+
+The deployed VM serves `oj.braveflamingdog.com` through host Nginx and a
+Let's Encrypt certificate. DNS should point the domain to the VM external IP:
+
+```text
+oj.braveflamingdog.com A 104.199.188.64
+```
+
+Allow HTTP and HTTPS traffic to the VM. The current GCP deployment uses the
+`oj-web` network tag:
+
+```bash
+gcloud compute firewall-rules create allow-oj-https \
+  --project project-6d617c10-fed9-46d4-b8e \
+  --allow tcp:443 \
+  --source-ranges 0.0.0.0/0 \
+  --target-tags oj-web \
+  --description "Allow HTTPS traffic to OJ web VM"
+```
+
+Install host Nginx and Certbot on the VM:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+```
+
+Create `/etc/nginx/sites-available/oj.braveflamingdog.com`:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name oj.braveflamingdog.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Enable the site and request the certificate:
+
+```bash
+sudo ln -sfn /etc/nginx/sites-available/oj.braveflamingdog.com /etc/nginx/sites-enabled/oj.braveflamingdog.com
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl enable --now nginx
+sudo systemctl reload nginx
+sudo certbot --nginx -d oj.braveflamingdog.com --redirect
+sudo certbot renew --dry-run
 ```
 
 ## Database Migration and Seed Data
@@ -114,21 +177,23 @@ docker compose restart judge-worker
 The current deployed VM was checked with:
 
 ```bash
-curl -I http://104.199.188.64
-curl http://104.199.188.64/api/v1/healthz
+curl -I http://oj.braveflamingdog.com/login
+curl -I https://oj.braveflamingdog.com/login
+curl https://oj.braveflamingdog.com/api/v1/healthz
 ```
 
 Expected current results:
 
-- The homepage returns HTTP `200`.
+- HTTP redirects to HTTPS with `301`.
+- The HTTPS login page returns HTTP `200`.
 - `GET /api/v1/healthz` returns `{"status":"ok"}`.
 
 Full demo verification checklist:
 
 | Check | Command or action | Expected result |
 | --- | --- | --- |
-| Frontend reachable | Open `http://104.199.188.64` | Login page or app shell loads |
-| API liveness | `curl http://104.199.188.64/api/v1/healthz` | `{"status":"ok"}` |
+| Frontend reachable | Open `https://oj.braveflamingdog.com/login` | Login page or app shell loads |
+| API liveness | `curl https://oj.braveflamingdog.com/api/v1/healthz` | `{"status":"ok"}` |
 | Containers running | `docker compose ps` | API, DB, Redis, MinIO, worker, Nginx are up |
 | Worker active | `docker compose logs -f judge-worker` | Worker starts and consumes judge jobs |
 | Demo flow | Submit a solution from the candidate UI | Submission reaches a final verdict |
@@ -163,4 +228,3 @@ the deployment as production-ready.
 - Keep judge execution isolated on a VM or dedicated node because it requires
   sandbox container execution.
 - Treat `/metrics` as internal in production; it can expose operational details.
-
