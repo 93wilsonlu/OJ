@@ -10,6 +10,7 @@ import type {
   ProctoringEventCreate,
 } from '../types/exam'
 import { throwOnApiError } from './errors'
+import { pathSegment } from './http'
 
 const BASE = '/api/v1'
 
@@ -26,7 +27,8 @@ export async function apiListExams(token: string): Promise<Exam[]> {
 }
 
 export async function apiGetExam(token: string, examId: string): Promise<Exam> {
-  const res = await fetch(`${BASE}/exams/${examId}`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnError(res)
@@ -44,7 +46,8 @@ export async function apiCreateExam(token: string, body: ExamCreate): Promise<Ex
 }
 
 export async function apiUpdateExam(token: string, examId: string, body: ExamUpdate): Promise<Exam> {
-  const res = await fetch(`${BASE}/exams/${examId}`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -54,7 +57,8 @@ export async function apiUpdateExam(token: string, examId: string, body: ExamUpd
 }
 
 export async function apiDeleteExam(token: string, examId: string): Promise<void> {
-  const res = await fetch(`${BASE}/exams/${examId}`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -62,7 +66,8 @@ export async function apiDeleteExam(token: string, examId: string): Promise<void
 }
 
 export async function apiListExamProblems(token: string, examId: string): Promise<ExamProblem[]> {
-  const res = await fetch(`${BASE}/exams/${examId}/problems`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/problems`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnError(res)
@@ -70,7 +75,8 @@ export async function apiListExamProblems(token: string, examId: string): Promis
 }
 
 export async function apiListAssignments(token: string, examId: string): Promise<ExamAssignment[]> {
-  const res = await fetch(`${BASE}/exams/${examId}/assignments`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/assignments`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnError(res)
@@ -82,7 +88,8 @@ export async function apiCreateAssignment(
   examId: string,
   body: { candidate_id: string; problem_id: string },
 ): Promise<ExamAssignment> {
-  const res = await fetch(`${BASE}/exams/${examId}/assignments`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/assignments`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -96,7 +103,9 @@ export async function apiDeleteAssignment(
   examId: string,
   assignmentId: string,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/exams/${examId}/assignments/${assignmentId}`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const safeAssignmentId = pathSegment(assignmentId, 'assignmentId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/assignments/${safeAssignmentId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -107,7 +116,8 @@ export async function apiGetCandidateExamState(
   token: string,
   examId: string,
 ): Promise<ExamCandidateState> {
-  const res = await fetch(`${BASE}/exams/${examId}/candidate-state`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/candidate-state`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnError(res)
@@ -115,7 +125,8 @@ export async function apiGetCandidateExamState(
 }
 
 export async function apiGetExamAccess(token: string, examId: string): Promise<ExamAccess> {
-  const res = await fetch(`${BASE}/exams/${examId}/access`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/access`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnError(res)
@@ -123,7 +134,8 @@ export async function apiGetExamAccess(token: string, examId: string): Promise<E
 }
 
 export async function apiStartExam(token: string, examId: string): Promise<ExamAttempt> {
-  const res = await fetch(`${BASE}/exams/${examId}/start`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/start`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -132,7 +144,8 @@ export async function apiStartExam(token: string, examId: string): Promise<ExamA
 }
 
 export async function apiEndExam(token: string, examId: string): Promise<ExamAttempt> {
-  const res = await fetch(`${BASE}/exams/${examId}/end`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/end`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -141,7 +154,8 @@ export async function apiEndExam(token: string, examId: string): Promise<ExamAtt
 }
 
 export async function apiFullscreenExit(token: string, examId: string): Promise<ExamAttempt> {
-  const res = await fetch(`${BASE}/exams/${examId}/fullscreen-exit`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/fullscreen-exit`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -150,7 +164,8 @@ export async function apiFullscreenExit(token: string, examId: string): Promise<
 }
 
 export async function apiFullscreenReturn(token: string, examId: string): Promise<ExamAttempt> {
-  const res = await fetch(`${BASE}/exams/${examId}/fullscreen-return`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/fullscreen-return`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -163,7 +178,8 @@ export async function apiCreateProctoringEvent(
   examId: string,
   body: ProctoringEventCreate,
 ): Promise<ExamCandidateState> {
-  const res = await fetch(`${BASE}/exams/${examId}/proctoring-events`, {
+  const safeExamId = pathSegment(examId, 'examId')
+  const res = await fetch(`${BASE}/exams/${safeExamId}/proctoring-events`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

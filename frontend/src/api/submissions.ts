@@ -6,6 +6,7 @@ import type {
   SubmissionRunResult,
 } from '../types/submission'
 import { throwOnApiError } from './errors'
+import { pathSegment } from './http'
 
 const BASE = '/api/v1'
 
@@ -26,7 +27,8 @@ export async function apiCreateSubmission(
 }
 
 export async function apiGetSubmission(token: string, submissionId: string): Promise<SubmissionDetail> {
-  const res = await fetch(`${BASE}/submissions/${submissionId}`, {
+  const safeSubmissionId = pathSegment(submissionId, 'submissionId')
+  const res = await fetch(`${BASE}/submissions/${safeSubmissionId}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnApiError(res, 'Failed to fetch submission')
@@ -74,7 +76,8 @@ export async function apiGetSubmissionRun(
   token: string,
   runId: string,
 ): Promise<SubmissionRunResult> {
-  const res = await fetch(`${BASE}/submissions/run/${runId}`, {
+  const safeRunId = pathSegment(runId, 'runId')
+  const res = await fetch(`${BASE}/submissions/run/${safeRunId}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   await throwOnApiError(res, 'Failed to fetch run result')

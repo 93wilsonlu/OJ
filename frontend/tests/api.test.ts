@@ -226,6 +226,18 @@ describe('API helper functions', () => {
     expect(res).toEqual(mockJson)
   })
 
+  test('exam and submission path APIs reject invalid path segments before fetch', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await expect(apiGetExamAccess('token123', '../exam-id')).rejects.toThrow('Invalid examId')
+    await expect(apiFullscreenExit('token123', 'exam/evil')).rejects.toThrow('Invalid examId')
+    await expect(apiFullscreenReturn('token123', 'exam-id?next=/admin')).rejects.toThrow('Invalid examId')
+    await expect(apiGetSubmissionRun('token123', 'run/evil')).rejects.toThrow('Invalid runId')
+
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
   test('apiStartExam, apiEndExam, apiFullscreenExit, apiFullscreenReturn call fetch with POST', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
