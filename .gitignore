@@ -30,3 +30,6 @@ dist/
 .idea/
 .vscode/
 .claude/
+
+coverage/
+*.lcov
