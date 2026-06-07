@@ -17,13 +17,12 @@ COMPILE_MEM = "512m"                # generous fixed budget for the compiler
 # also cap disk-fill abuse. Directories are private to the sandbox user instead
 # of world-writable.
 TMPFS_OWNER = "uid=65534,gid=65534,mode=0700"
+SANDBOX_TMPDIR = "/box/.tmp"
 RUN_TMPFS = {
     "/box": f"rw,exec,size=64m,{TMPFS_OWNER},nosuid,nodev",
-    "/tmp": f"rw,size=64m,{TMPFS_OWNER},noexec,nosuid,nodev",
 }
 COMPILE_TMPFS = {
     "/box": f"rw,size=256m,{TMPFS_OWNER},noexec,nosuid,nodev",
-    "/tmp": f"rw,size=256m,{TMPFS_OWNER},noexec,nosuid,nodev",
 }
 
 def _image(lang: str) -> str:
@@ -46,6 +45,11 @@ def _create_container(client, image: str, mem_limit: str, command: list, tmpfs: 
         cap_drop=["ALL"],
         security_opt=["no-new-privileges"],
         tmpfs=tmpfs,
+        environment={
+            "TMPDIR": SANDBOX_TMPDIR,
+            "TEMP": SANDBOX_TMPDIR,
+            "TMP": SANDBOX_TMPDIR,
+        },
         user=SANDBOX_USER,
         working_dir="/box",
     )
@@ -121,7 +125,7 @@ def compile_code(box_id: int, lang: str, code: str, box_dir: dict) -> tuple[bool
         # overlay (/opt), then copy it into the tmpfs from inside the container.
         container.put_archive("/opt", _create_tar({filename: code}))
 
-        build = f"cp /opt/{filename} /box/"
+        build = f"mkdir -p {SANDBOX_TMPDIR} && cp /opt/{filename} /box/"
         if lang == "cpp17":
             build += " && g++ -O2 -std=c++17 main.cpp -o main"
         exit_code, output = container.exec_run(["sh", "-c", build], workdir="/box")
@@ -133,7 +137,12 @@ def compile_code(box_id: int, lang: str, code: str, box_dir: dict) -> tuple[bool
         # untrusted run-time code from overwriting these files on the uncapped
         # overlay. Each test then runs in its own fresh, resource-limited container.
         exit_code, output = container.exec_run(
-            ["sh", "-c", "mkdir -p /opt/box && cp -r /box/. /opt/box/"], user="0"
+            [
+                "sh",
+                "-c",
+                f"rm -rf {SANDBOX_TMPDIR} && mkdir -p /opt/box && cp -r /box/. /opt/box/",
+            ],
+            user="0",
         )
         if exit_code != 0:
             return False, output.decode("utf-8", errors="ignore")
@@ -175,7 +184,9 @@ def run_test_case(
         container.put_archive("/opt", box_archive)                    # -> /opt/box/...
         container.put_archive("/opt", _create_tar({"input.txt": input_data}))
 
-        stage = "cp -r /opt/box/. /box/ && cp /opt/input.txt /box/"
+        stage = (
+            f"mkdir -p {SANDBOX_TMPDIR} && cp -r /opt/box/. /box/ && cp /opt/input.txt /box/"
+        )
         exit_code, _ = container.exec_run(["sh", "-c", stage], workdir="/box")
         if exit_code != 0:
             return "System Error", 0, 0
@@ -240,7 +251,9 @@ def run_custom_input(
         container.put_archive("/opt", box_archive)
         container.put_archive("/opt", _create_tar({"input.txt": input_data}))
 
-        stage = "cp -r /opt/box/. /box/ && cp /opt/input.txt /box/"
+        stage = (
+            f"mkdir -p {SANDBOX_TMPDIR} && cp -r /opt/box/. /box/ && cp /opt/input.txt /box/"
+        )
         exit_code, stage_output = container.exec_run(["sh", "-c", stage], workdir="/box")
         if exit_code != 0:
             return (

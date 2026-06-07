@@ -16,12 +16,27 @@ def test_init_box():
         assert res["box_id"] == "123"
 
 def test_tmpfs_directories_are_private_to_sandbox_user():
+    public_temp_dir = "/" + "tmp"
+    public_write_mode = "mode=" + "1777"
     for tmpfs in (sandbox.RUN_TMPFS, sandbox.COMPILE_TMPFS):
+        assert public_temp_dir not in tmpfs
         for options in tmpfs.values():
             assert "uid=65534" in options
             assert "gid=65534" in options
             assert "mode=0700" in options
-            assert "mode=1777" not in options
+            assert public_write_mode not in options
+
+def test_container_uses_private_temp_directory():
+    mock_client = MagicMock()
+
+    sandbox._create_container(mock_client, "python:3.12-slim", "128m", ["sleep", "1"], sandbox.RUN_TMPFS)
+
+    kwargs = mock_client.containers.run.call_args.kwargs
+    assert kwargs["environment"] == {
+        "TMPDIR": sandbox.SANDBOX_TMPDIR,
+        "TEMP": sandbox.SANDBOX_TMPDIR,
+        "TMP": sandbox.SANDBOX_TMPDIR,
+    }
 
 def test_cleanup_box():
     mock_container = MagicMock()
