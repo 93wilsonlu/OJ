@@ -31,5 +31,6 @@ dist/
 .vscode/
 .claude/
 
-coverage/
+frontend/coverage/
+**/coverage/
 *.lcov
