@@ -73,7 +73,7 @@ jobs:
             ! -name ".env" \
             ! -name "secrets" \
             -exec rm -rf {} +; then
-            echo "Warning: some non-preserved files could not be removed during cleanup."
+            echo "Warning: some non-preserved files could not be removed during cleanup (likely permissions). Deployment will continue, but check VM file ownership."
           fi
 
           tar -xzf "$HOME/final_deploy.tar.gz" -C "$APP_DIR"
@@ -81,6 +81,8 @@ jobs:
 
           # Write GCP credentials
           mkdir -p "$APP_DIR/secrets"
+          # Some deployments leave adc.json non-writable (e.g. root-owned from prior container writes).
+          # In that case keep the existing file so deploy does not fail, and refresh manually if needed.
           if [ -f "$APP_DIR/secrets/adc.json" ] && [ ! -w "$APP_DIR/secrets/adc.json" ]; then
             echo "Keeping existing non-writable $APP_DIR/secrets/adc.json (assumes existing credentials are valid)"
           elif [ -w "$APP_DIR/secrets" ]; then
