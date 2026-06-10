@@ -19,7 +19,6 @@ from app.services import queue as queue_service
 
 RUN_RESULT_TTL_SECONDS = 10 * 60
 RUN_RATE_LIMIT_SECONDS = 5
-RUN_QUEUE_MAX_LENGTH = 100
 
 _redis: redis.Redis | None = None
 
@@ -106,9 +105,6 @@ async def create_run(
     if not redis_client.set(rate_key, str(run_id), nx=True, ex=RUN_RATE_LIMIT_SECONDS):
         raise HTTPException(status_code=429, detail="Wait before running again")
 
-    if queue_service.get_run_queue().count >= RUN_QUEUE_MAX_LENGTH:
-        raise HTTPException(status_code=429, detail="Run queue is busy. Please try again later")
-
     payload = {
         "run_id": str(run_id),
         "candidate_id": str(current_user.user_id),
@@ -119,6 +115,8 @@ async def create_run(
         "stdin": data.stdin,
         "status": "queued",
         "created_at": datetime.now(UTC).isoformat(),
+        "time_limit": problem.time_limit,
+        "memory_limit": problem.memory_limit,
     }
 
     redis_client.set(active_key, str(run_id), ex=RUN_RESULT_TTL_SECONDS)

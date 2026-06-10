@@ -607,6 +607,8 @@ async def test_candidate_can_create_custom_run(mock_get_redis, mock_enqueue):
     problem = MagicMock()
     problem.problem_id = problem_id
     problem.allowed_langs = ["python3"]
+    problem.time_limit = 1000
+    problem.memory_limit = 256
     assignment = _make_assignment(exam.exam_id, candidate.user_id, problem_id)
 
     db = _mock_db()
