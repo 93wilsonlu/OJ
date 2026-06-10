@@ -1,12 +1,16 @@
 import ctypes
 import math
 import os
-import resource
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+
+try:
+    import resource
+except ModuleNotFoundError:
+    resource = None
 
 
 class SandboxError(Exception):
@@ -23,6 +27,8 @@ MB = 1024 * 1024
 
 
 def _try_setrlimit(resource_id, soft, hard):
+    if resource is None:
+        return
     try:
         resource.setrlimit(resource_id, (soft, hard))
     except (ValueError, OSError):
@@ -48,8 +54,6 @@ def _block_network_syscalls():
         SYS_accept = 43
         SYS_accept4 = 288
         SYS_socketpair = 53
-        SYS_socketcall = 102  # for older kernels
-
         # BPF program: deny network syscalls, allow everything else
         # Format: (opcode, jt, jf, k) where jt/jf are jump targets
         class BPF:
@@ -107,14 +111,15 @@ def _block_network_syscalls():
 def _set_limits(mem_mb: int, cpu_s: int, pids: int, file_mb: int):
     def _preexec():
         mem_bytes = mem_mb * MB
-        _try_setrlimit(resource.RLIMIT_AS, mem_bytes, mem_bytes)
-        _try_setrlimit(resource.RLIMIT_CPU, cpu_s, cpu_s + 1)
-        # RLIMIT_NPROC on macOS limits total user processes (not per-process forks),
-        # which breaks compiler helpers like xcodebuild. Only enforce on Linux/gVisor.
-        if sys.platform == "linux":
-            _try_setrlimit(resource.RLIMIT_NPROC, pids, pids)
-        fsize = file_mb * MB
-        _try_setrlimit(resource.RLIMIT_FSIZE, fsize, fsize)
+        if resource is not None:
+            _try_setrlimit(resource.RLIMIT_AS, mem_bytes, mem_bytes)
+            _try_setrlimit(resource.RLIMIT_CPU, cpu_s, cpu_s + 1)
+            # RLIMIT_NPROC on macOS limits total user processes (not per-process forks),
+            # which breaks compiler helpers like xcodebuild. Only enforce on Linux/gVisor.
+            if sys.platform == "linux":
+                _try_setrlimit(resource.RLIMIT_NPROC, pids, pids)
+            fsize = file_mb * MB
+            _try_setrlimit(resource.RLIMIT_FSIZE, fsize, fsize)
         # Network isolation: run in separate namespace so user code can't access
         # Redis, Pub/Sub, or other network services.
         if sys.platform == "linux":
@@ -229,7 +234,7 @@ def run_test_case(
                 proc.kill()
                 proc.wait()
                 return "Time Limit Exceeded", time_limit_ms, 0
-    except Exception as e:
+    except Exception:
         if proc is not None:
             try:
                 proc.kill()
@@ -334,13 +339,45 @@ def run_custom_input(
     stderr_text, stderr_truncated = _read_limited(stderr_path)
 
     if exit_code == 9 or exit_code == 137 or exit_code == -9:
-        return "Memory Limit Exceeded", time_used_ms, memory_limit_mb * 1024, stdout_text, stderr_text, stdout_truncated, stderr_truncated
+        return (
+            "Memory Limit Exceeded",
+            time_used_ms,
+            memory_limit_mb * 1024,
+            stdout_text,
+            stderr_text,
+            stdout_truncated,
+            stderr_truncated,
+        )
     if exit_code == 139 or exit_code == -11:
-        return "Memory Limit Exceeded", time_used_ms, memory_limit_mb * 1024, stdout_text, stderr_text, stdout_truncated, stderr_truncated
+        return (
+            "Memory Limit Exceeded",
+            time_used_ms,
+            memory_limit_mb * 1024,
+            stdout_text,
+            stderr_text,
+            stdout_truncated,
+            stderr_truncated,
+        )
     if exit_code != 0:
-        return "Runtime Error", time_used_ms, mem_used_kb, stdout_text, stderr_text, stdout_truncated, stderr_truncated
+        return (
+            "Runtime Error",
+            time_used_ms,
+            mem_used_kb,
+            stdout_text,
+            stderr_text,
+            stdout_truncated,
+            stderr_truncated,
+        )
 
-    return "OK", time_used_ms, mem_used_kb, stdout_text, stderr_text, stdout_truncated, stderr_truncated
+    return (
+        "OK",
+        time_used_ms,
+        mem_used_kb,
+        stdout_text,
+        stderr_text,
+        stdout_truncated,
+        stderr_truncated,
+    )
 
 
 def cleanup_box(box_dir: dict) -> None:
