@@ -1,3 +1,4 @@
+import ctypes
 import math
 import os
 import resource
@@ -30,6 +31,79 @@ def _try_setrlimit(resource_id, soft, hard):
         pass
 
 
+def _block_network_syscalls():
+    """Block all network syscalls (socket, connect, bind, etc.) using seccomp."""
+    if not sys.platform == "linux":
+        return
+    try:
+        libc = ctypes.CDLL(None)
+        PR_SET_SECCOMP = 22
+        SECCOMP_MODE_FILTER = 2
+
+        # Syscall numbers for x86_64 (see: asm/unistd_64.h)
+        SYS_socket = 41
+        SYS_connect = 42
+        SYS_bind = 49
+        SYS_listen = 50
+        SYS_accept = 43
+        SYS_accept4 = 288
+        SYS_socketpair = 53
+        SYS_socketcall = 102  # for older kernels
+
+        # BPF program: deny network syscalls, allow everything else
+        # Format: (opcode, jt, jf, k) where jt/jf are jump targets
+        class BPF:
+            LD_ABS = 0x20
+            JMP_JEQ = 0x15
+            JMP_JGE = 0x35
+            RET = 0x06
+            K = 0x00
+            X = 0x08
+
+        bpf_filter = [
+            # Load syscall number into accumulator
+            (BPF.LD_ABS | BPF.K, 0, 0, 4),  # offset 4 = syscall number
+
+            # Check each blocked syscall and jump to SECCOMP_RET_ERRNO (deny)
+            # SECCOMP_RET_ERRNO = 0x00050000 | errno (EPERM=1 → 0x00050001)
+            (BPF.JMP_JEQ | BPF.K, 0, 1, SYS_socket),      # socket → deny
+            (BPF.RET | BPF.K, 0, 0, 0x00050001),           # return EPERM
+
+            (BPF.JMP_JEQ | BPF.K, 0, 1, SYS_connect),      # connect → deny
+            (BPF.RET | BPF.K, 0, 0, 0x00050001),
+
+            (BPF.JMP_JEQ | BPF.K, 0, 1, SYS_bind),         # bind → deny
+            (BPF.RET | BPF.K, 0, 0, 0x00050001),
+
+            (BPF.JMP_JEQ | BPF.K, 0, 1, SYS_listen),       # listen → deny
+            (BPF.RET | BPF.K, 0, 0, 0x00050001),
+
+            (BPF.JMP_JEQ | BPF.K, 0, 1, SYS_accept),       # accept → deny
+            (BPF.RET | BPF.K, 0, 0, 0x00050001),
+
+            (BPF.JMP_JEQ | BPF.K, 0, 1, SYS_accept4),      # accept4 → deny
+            (BPF.RET | BPF.K, 0, 0, 0x00050001),
+
+            (BPF.JMP_JEQ | BPF.K, 0, 1, SYS_socketpair),   # socketpair → deny
+            (BPF.RET | BPF.K, 0, 0, 0x00050001),
+
+            # Allow all other syscalls (SECCOMP_RET_ALLOW = 0x7fff0000)
+            (BPF.RET | BPF.K, 0, 0, 0x7fff0000),
+        ]
+
+        # Convert to ctypes array
+        BPF_INSTR = ctypes.c_uint16 * 4
+        bpf_insns = (BPF_INSTR * len(bpf_filter))()
+        for i, (opcode, jt, jf, k) in enumerate(bpf_filter):
+            bpf_insns[i] = BPF_INSTR(opcode, jt, jf, k)
+
+        # Load seccomp filter
+        libc.prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, ctypes.byref(bpf_insns))
+    except (AttributeError, OSError, Exception):
+        # Seccomp not available or failed; fallback to network namespace isolation only
+        pass
+
+
 def _set_limits(mem_mb: int, cpu_s: int, pids: int, file_mb: int):
     def _preexec():
         mem_bytes = mem_mb * MB
@@ -42,7 +116,7 @@ def _set_limits(mem_mb: int, cpu_s: int, pids: int, file_mb: int):
         fsize = file_mb * MB
         _try_setrlimit(resource.RLIMIT_FSIZE, fsize, fsize)
         # Network isolation: run in separate namespace so user code can't access
-        # Redis, Pub/Sub, or other network services. Only loopback available.
+        # Redis, Pub/Sub, or other network services.
         if sys.platform == "linux":
             try:
                 os.unshare(os.CLONE_NEWNET)
@@ -50,6 +124,10 @@ def _set_limits(mem_mb: int, cpu_s: int, pids: int, file_mb: int):
                 # CLONE_NEWNET not available (macOS, unprivileged, or older kernel).
                 # On GKE with gVisor, this will succeed and isolate the network.
                 pass
+            # Additionally, block network syscalls at the kernel level (seccomp).
+            # Even if network namespace is misconfigured, user code can't make
+            # socket, connect, bind calls.
+            _block_network_syscalls()
     return _preexec
 
 
