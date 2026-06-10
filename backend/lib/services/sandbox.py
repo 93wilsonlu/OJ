@@ -41,6 +41,15 @@ def _set_limits(mem_mb: int, cpu_s: int, pids: int, file_mb: int):
             _try_setrlimit(resource.RLIMIT_NPROC, pids, pids)
         fsize = file_mb * MB
         _try_setrlimit(resource.RLIMIT_FSIZE, fsize, fsize)
+        # Network isolation: run in separate namespace so user code can't access
+        # Redis, Pub/Sub, or other network services. Only loopback available.
+        if sys.platform == "linux":
+            try:
+                os.unshare(os.CLONE_NEWNET)
+            except (AttributeError, OSError):
+                # CLONE_NEWNET not available (macOS, unprivileged, or older kernel).
+                # On GKE with gVisor, this will succeed and isolate the network.
+                pass
     return _preexec
 
 
