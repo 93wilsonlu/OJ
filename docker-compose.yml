@@ -32,8 +32,6 @@ services:
       DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
       REDIS_URL: redis://redis:6379/0
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/adc.json
-      GCS_PROJECT: project-6d617c10-fed9-46d4-b8e
-      GOOGLE_CLOUD_PROJECT: project-6d617c10-fed9-46d4-b8e
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,24 +42,25 @@ services:
     volumes:
       - ~/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro
 
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.worker
-    env_file: .env
-    environment:
-      REDIS_URL: redis://redis:6379/0
-      GOOGLE_APPLICATION_CREDENTIALS: /tmp/adc.json
-      GCS_PROJECT: project-6d617c10-fed9-46d4-b8e
-      GOOGLE_CLOUD_PROJECT: project-6d617c10-fed9-46d4-b8e
-      CALLBACK_URL: http://api:8000
-    depends_on:
-      api:
-        condition: service_started
-      redis:
-        condition: service_healthy
-    volumes:
-      - ~/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro
+  # worker:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile.worker
+  #   environment:
+  #     GOOGLE_APPLICATION_CREDENTIALS: /tmp/adc.json
+  #     GCS_BUCKET: ${GCS_BUCKET}
+  #     GCS_PROJECT: ${GCS_PROJECT}
+  #     PUBSUB_JUDGE_TOPIC: ${PUBSUB_JUDGE_TOPIC}
+  #     PUBSUB_RUN_TOPIC: ${PUBSUB_RUN_TOPIC}
+  #     PUBSUB_JUDGE_SUBSCRIPTION: ${PUBSUB_JUDGE_SUBSCRIPTION}
+  #     PUBSUB_RUN_SUBSCRIPTION: ${PUBSUB_RUN_SUBSCRIPTION}
+  #     CALLBACK_URL: http://api:8000
+  #     INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+  #   depends_on:
+  #     api:
+  #       condition: service_started
+  #   volumes:
+  #     - ~/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro
 
   nginx:
     build:
