@@ -68,7 +68,7 @@ async def _post_webhook(url: str, payload: dict) -> None:
                 )
                 if i < len(delays) - 1:
                     await asyncio.sleep(delay)
-    raise last_exc  # type: ignore[misc]
+    raise last_exc or RuntimeError("all webhook retries exhausted")
 
 
 def judge_submission(message: dict) -> None:
