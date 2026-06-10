@@ -1,9 +1,6 @@
 import asyncio
 import json
 import random
-import sys
-import threading
-import time
 import traceback
 import uuid
 from types import SimpleNamespace
@@ -12,21 +9,10 @@ import httpx
 import structlog
 from google.cloud import pubsub_v1
 
-from lib import custom_run, storage
+from lib import storage
 from lib.config import settings
 from lib.logging import configure_logging
-from lib.observability import (
-    record_judge_result,
-    record_stuck_submissions,
-    record_worker_heartbeat,
-)
-from lib.services.sandbox import (
-    cleanup_box,
-    compile_code,
-    init_box,
-    run_custom_input,
-    run_test_case,
-)
+from lib.services.sandbox import cleanup_box, compile_code, init_box, run_test_case
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -78,15 +64,8 @@ def judge_submission(message: dict) -> None:
     _get_worker_loop().run_until_complete(_judge_submission_async(message))
 
 
-def run_custom_submission(run_id_str: str) -> None:
-    _get_worker_loop().run_until_complete(
-        _run_custom_submission_async(uuid.UUID(run_id_str))
-    )
-
-
 async def _judge_submission_async(message: dict) -> None:
     submission_id = uuid.UUID(message["submission_id"])
-    started_at = time.perf_counter()
 
     # Best-effort: mark submission as "judging"
     try:
@@ -136,11 +115,6 @@ async def _judge_submission_async(message: dict) -> None:
         case_results = []
         submission_status = "failed"
 
-    duration_seconds = time.perf_counter() - started_at
-    record_judge_result(
-        success=(submission_status == "completed"), duration_seconds=duration_seconds
-    )
-
     try:
         await _post_webhook(
             f"{settings.CALLBACK_URL}/api/v1/internal/judge-result",
@@ -161,7 +135,6 @@ async def _judge_submission_async(message: dict) -> None:
             "judge.completed",
             submission_id=str(submission_id),
             verdict=verdict,
-            duration_seconds=round(duration_seconds, 3),
             passed=passed,
             total=total,
         )
@@ -173,168 +146,23 @@ async def _judge_submission_async(message: dict) -> None:
         )
 
 
-async def mark_stuck_submissions() -> int:
-    url = f"{settings.CALLBACK_URL}/api/v1/internal/mark-stuck"
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                url, headers={"X-Internal-Token": settings.INTERNAL_TOKEN}
-            )
-            resp.raise_for_status()
-        count = resp.json().get("marked", 0)
-        if count:
-            record_stuck_submissions(count)
-        return count
-    except Exception as exc:
-        logger.warning("worker.mark_stuck.failed", error=str(exc))
-        return 0
-
-
-def _heartbeat_loop(stop_event: threading.Event) -> None:
-    while not stop_event.is_set():
-        record_worker_heartbeat()
-        stop_event.wait(settings.WORKER_HEARTBEAT_INTERVAL_SECONDS)
-
-
 def main() -> None:
-    stop_event = threading.Event()
-    heartbeat = threading.Thread(target=_heartbeat_loop, args=(stop_event,), daemon=True)
-    heartbeat.start()
-    try:
-        subscriber = pubsub_v1.SubscriberClient()
-        flow = pubsub_v1.types.FlowControl(max_messages=1)
+    subscriber = pubsub_v1.SubscriberClient()
+    flow = pubsub_v1.types.FlowControl(max_messages=1)
 
-        def on_judge(message: pubsub_v1.subscriber.message.Message) -> None:
-            data = json.loads(message.data)
-            judge_submission(data)
-            message.ack()
+    def on_judge(message: pubsub_v1.subscriber.message.Message) -> None:
+        data = json.loads(message.data)
+        judge_submission(data)
+        message.ack()
 
-        def on_run(message: pubsub_v1.subscriber.message.Message) -> None:
-            data = json.loads(message.data)
-            run_custom_submission(data["run_id"])
-            message.ack()
-
-        fut_judge = subscriber.subscribe(
-            settings.PUBSUB_JUDGE_SUBSCRIPTION, on_judge, flow_control=flow
-        )
-        fut_run = subscriber.subscribe(
-            settings.PUBSUB_RUN_SUBSCRIPTION, on_run, flow_control=flow
-        )
-        logger.info(
-            "worker.started",
-            judge_sub=settings.PUBSUB_JUDGE_SUBSCRIPTION,
-            run_sub=settings.PUBSUB_RUN_SUBSCRIPTION,
-        )
-        try:
-            fut_judge.result()
-        finally:
-            fut_run.cancel()
-    finally:
-        stop_event.set()
-        heartbeat.join(timeout=2)
-
-
-async def monitor_stuck_submissions_loop() -> None:
-    logger.info("worker.stuck_monitor.started")
-    while True:
-        try:
-            await mark_stuck_submissions()
-        except Exception as exc:
-            logger.warning("worker.stuck_scan.failed", error=str(exc))
-        await asyncio.sleep(settings.WORKER_HEARTBEAT_INTERVAL_SECONDS)
-
-
-async def _run_custom_submission_async(run_id: uuid.UUID) -> None:
-    redis_client = custom_run.get_redis()
-    run_key = custom_run._run_key(run_id)
-    raw = redis_client.get(run_key)
-    if raw is None:
-        return
-
-    payload = json.loads(raw)
-    candidate_id = uuid.UUID(payload["candidate_id"])
-    active_key = custom_run._active_key(candidate_id)
-    payload["status"] = "running"
-    redis_client.setex(run_key, custom_run.RUN_RESULT_TTL_SECONDS, json.dumps(payload))
-
-    try:
-        result = await _run_custom_judge(
-            payload["language"],
-            payload["code"],
-            payload["stdin"],
-            payload["time_limit"],
-            payload["memory_limit"],
-        )
-        payload = {
-            "run_id": str(run_id),
-            "candidate_id": str(candidate_id),
-            "status": "completed",
-            **result,
-        }
-    except Exception as exc:
-        logger.error(f"Error running custom run {run_id}: {exc}")
-        logger.error(traceback.format_exc())
-        payload = {
-            "run_id": str(run_id),
-            "candidate_id": str(candidate_id),
-            "status": "failed",
-            "verdict": "System Error",
-            "stdout": "",
-            "stderr": "",
-            "stdout_truncated": False,
-            "stderr_truncated": False,
-            "execution_time": 0,
-            "memory_usage": 0,
-            "error_message": SYSTEM_ERROR_MESSAGE,
-        }
-    finally:
-        redis_client.delete(active_key)
-
-    redis_client.setex(run_key, custom_run.RUN_RESULT_TTL_SECONDS, json.dumps(payload))
-
-
-async def _run_custom_judge(
-    lang: str,
-    code: str,
-    stdin: str,
-    time_limit: int,
-    memory_limit: int,
-) -> dict:
-    box_id = random.randint(0, 999)
-    box_dir = ""
-    try:
-        box_dir = init_box(box_id)
-        success, comp_err = compile_code(box_id, lang, code, box_dir)
-        if not success:
-            truncated = len(comp_err.encode("utf-8")) > 32 * 1024
-            comp_err = comp_err[: 32 * 1024]
-            return {
-                "verdict": "Compile Error",
-                "stdout": "",
-                "stderr": comp_err,
-                "stdout_truncated": False,
-                "stderr_truncated": truncated,
-                "execution_time": 0,
-                "memory_usage": 0,
-                "error_message": comp_err,
-            }
-
-        verdict, time_used, mem_used, stdout, stderr, stdout_truncated, stderr_truncated = (
-            run_custom_input(box_id, lang, time_limit, memory_limit, stdin, box_dir)
-        )
-        return {
-            "verdict": verdict,
-            "stdout": stdout,
-            "stderr": stderr,
-            "stdout_truncated": stdout_truncated,
-            "stderr_truncated": stderr_truncated,
-            "execution_time": time_used,
-            "memory_usage": mem_used,
-            "error_message": stderr if verdict != "OK" else None,
-        }
-    finally:
-        if box_dir:
-            cleanup_box(box_dir)
+    fut_judge = subscriber.subscribe(
+        settings.PUBSUB_JUDGE_SUBSCRIPTION, on_judge, flow_control=flow
+    )
+    logger.info(
+        "worker.started",
+        judge_sub=settings.PUBSUB_JUDGE_SUBSCRIPTION,
+    )
+    fut_judge.result()
 
 
 async def _run_judge(
@@ -448,9 +276,4 @@ async def _run_judge(
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "monitor":
-        asyncio.run(monitor_stuck_submissions_loop())
-    elif len(sys.argv) > 1 and sys.argv[1] == "monitor-once":
-        asyncio.run(mark_stuck_submissions())
-    else:
-        main()
+    main()

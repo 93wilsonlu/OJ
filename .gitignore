@@ -22,6 +22,10 @@ dist/
 !.env.example
 !.env.production.example
 
+# Secrets
+secrets/
+!secrets/.gitkeep
+
 # Docker
 *.log
 

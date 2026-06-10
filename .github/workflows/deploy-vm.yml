@@ -82,3 +82,14 @@ jobs:
 
           echo "Deploy finished."
           EOF
+
+      - name: Write GCP credentials to VM
+        run: |
+          ssh -i ~/.ssh/gce_key ${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }} << 'EOF'
+          APP_DIR="$HOME/oj"
+          mkdir -p "$APP_DIR/secrets"
+          cat > "$APP_DIR/secrets/adc.json" << 'CREDS'
+          ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+          CREDS
+          chmod 600 "$APP_DIR/secrets/adc.json"
+          EOF

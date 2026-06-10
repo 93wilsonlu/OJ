@@ -31,7 +31,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
       REDIS_URL: redis://redis:6379/0
-      GOOGLE_APPLICATION_CREDENTIALS: /tmp/adc.json
+      GOOGLE_APPLICATION_CREDENTIALS: /var/run/secrets/adc.json
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,7 +40,7 @@ services:
     command: >
       sh -c "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
     volumes:
-      - ~/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro
+      - ./secrets/adc.json:/var/run/secrets/adc.json:ro
 
   # worker:
   #   build:
