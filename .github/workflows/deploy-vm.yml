@@ -73,7 +73,7 @@ jobs:
             ! -name ".env" \
             ! -name "secrets" \
             -exec rm -rf {} +; then
-            echo "Warning: some files could not be removed due to permissions. Check VM file ownership."
+            echo "Warning: some files could not be removed due to permissions, but deployment will continue. Check VM file ownership if issues arise."
           fi
 
           tar -xzf "$HOME/final_deploy.tar.gz" -C "$APP_DIR"
@@ -83,7 +83,7 @@ jobs:
           mkdir -p "$APP_DIR/secrets"
           # Some deployments leave adc.json non-writable (e.g. root-owned from prior container writes).
           # In that case keep the existing file so deploy does not fail.
-          # If service account keys rotate, refresh this file manually on the VM.
+          # If service account keys rotate, fix ownership/permissions and refresh this file manually on the VM.
           if [ -f "$APP_DIR/secrets/adc.json" ] && [ ! -w "$APP_DIR/secrets/adc.json" ]; then
             echo "Keeping existing non-writable $APP_DIR/secrets/adc.json (assumes existing credentials are valid)"
           elif [ -w "$APP_DIR/secrets" ]; then
