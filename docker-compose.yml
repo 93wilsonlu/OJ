@@ -50,7 +50,6 @@ services:
       dockerfile: Dockerfile.worker
     env_file: .env
     environment:
-      DATABASE_URL: ""
       REDIS_URL: redis://redis:6379/0
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/adc.json
       GCS_PROJECT: project-6d617c10-fed9-46d4-b8e
