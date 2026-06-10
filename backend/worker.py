@@ -13,11 +13,15 @@ import redis
 import structlog
 from google.cloud import pubsub_v1
 
-from app.config import settings
-from app.logging import configure_logging
-from app.observability import record_judge_result, record_stuck_submissions, record_worker_heartbeat
-from app.services import custom_run, storage
-from app.services.sandbox import (
+from lib import custom_run, storage
+from lib.config import settings
+from lib.logging import configure_logging
+from lib.observability import (
+    record_judge_result,
+    record_stuck_submissions,
+    record_worker_heartbeat,
+)
+from lib.services.sandbox import (
     cleanup_box,
     compile_code,
     init_box,

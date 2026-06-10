@@ -2,14 +2,14 @@ import io
 import pytest
 import docker
 from unittest.mock import MagicMock, patch, call
-from app.services import sandbox
+from lib.services import sandbox
 
 def test_image():
     assert sandbox._image("python3") == "python:3.12-slim"
     assert sandbox._image("cpp17") == "gcc:latest"
 
 def test_init_box():
-    with patch("app.services.sandbox.docker.from_env") as mock_from_env:
+    with patch("lib.services.sandbox.docker.from_env") as mock_from_env:
         res = sandbox.init_box(123)
         mock_from_env.assert_called_once()
         assert res["client"] is mock_from_env.return_value

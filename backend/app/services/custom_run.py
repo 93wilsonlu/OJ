@@ -2,7 +2,6 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-import redis
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,26 +15,14 @@ from app.schemas.submission import SubmissionRunCreate
 from app.services import exam as exam_service
 from app.services import proctoring as proctoring_service
 from app.services import queue as queue_service
+from lib.custom_run import (
+    RUN_RESULT_TTL_SECONDS,
+    _active_key,
+    _run_key,
+    get_redis,
+)
 
-RUN_RESULT_TTL_SECONDS = 10 * 60
 RUN_RATE_LIMIT_SECONDS = 5
-
-_redis: redis.Redis | None = None
-
-
-def get_redis() -> redis.Redis:
-    global _redis
-    if _redis is None:
-        _redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
-    return _redis
-
-
-def _run_key(run_id: uuid.UUID | str) -> str:
-    return f"custom_run:{run_id}"
-
-
-def _active_key(candidate_id: uuid.UUID) -> str:
-    return f"custom_run_active:{candidate_id}"
 
 
 def _rate_key(candidate_id: uuid.UUID) -> str:

@@ -9,7 +9,7 @@ RUN pip install uv
 COPY pyproject.toml .
 RUN uv sync --no-dev
 
-COPY app/ app/
+COPY lib/ lib/
 COPY worker.py .
 
 CMD ["sh", "-c", "uv run python worker.py"]

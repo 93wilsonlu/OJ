@@ -1,25 +1,29 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from dataclasses import dataclass
 
 import anyio
 import redis
 from prometheus_client import Gauge, generate_latest
-from redis import Redis
 from sqlalchemy import text
 
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services import storage
+from lib.observability import (
+    METRIC_JUDGE_DURATION_COUNT,
+    METRIC_JUDGE_DURATION_TOTAL,
+    METRIC_JUDGE_FAILURE,
+    METRIC_JUDGE_SUCCESS,
+    METRIC_STUCK_MARKED,
+    WORKER_HEARTBEAT_KEY,
+    get_redis_client,
+    record_judge_result,
+    record_stuck_submissions,
+    record_worker_heartbeat,
+)
 
-METRIC_JUDGE_SUCCESS = "oj:metrics:judge:success_total"
-METRIC_JUDGE_FAILURE = "oj:metrics:judge:failure_total"
-METRIC_JUDGE_DURATION_TOTAL = "oj:metrics:judge:duration_total_seconds"
-METRIC_JUDGE_DURATION_COUNT = "oj:metrics:judge:duration_count"
-METRIC_STUCK_MARKED = "oj:metrics:stuck_marked_total"
-WORKER_HEARTBEAT_KEY = "oj:worker:last_heartbeat"
 READINESS_CHECK_TIMEOUT_SECONDS = 1.0
 
 QUEUE_LENGTH = Gauge("oj_queue_length", "Number of jobs waiting in the judge queue.")
@@ -44,10 +48,6 @@ READINESS_UP = Gauge(
 class DependencyStatus:
     ok: bool
     detail: str
-
-
-def get_redis_client() -> Redis:
-    return redis.from_url(settings.REDIS_URL)
 
 
 async def check_db() -> DependencyStatus:
@@ -118,35 +118,9 @@ async def readiness_report() -> dict[str, object]:
     }
 
 
-def record_worker_heartbeat() -> None:
-    try:
-        get_redis_client().set(WORKER_HEARTBEAT_KEY, str(time.time()))
-    except Exception:
-        pass
 
 
-def record_judge_result(success: bool, duration_seconds: float) -> None:
-    try:
-        client = get_redis_client()
-        pipe = client.pipeline()
-        pipe.incr(METRIC_JUDGE_SUCCESS if success else METRIC_JUDGE_FAILURE)
-        pipe.incrbyfloat(METRIC_JUDGE_DURATION_TOTAL, duration_seconds)
-        pipe.incr(METRIC_JUDGE_DURATION_COUNT)
-        pipe.execute()
-    except Exception:
-        pass
-
-
-def record_stuck_submissions(count: int) -> None:
-    if count <= 0:
-        return
-    try:
-        get_redis_client().incrby(METRIC_STUCK_MARKED, count)
-    except Exception:
-        pass
-
-
-def _redis_float(client: Redis, key: str, default: float = 0.0) -> float:
+def _redis_float(client: redis.Redis, key: str, default: float = 0.0) -> float:
     value = client.get(key)
     if value is None:
         return default

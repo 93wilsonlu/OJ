@@ -11,8 +11,8 @@ from app.schemas.submission import SubmissionRunCreate
 from app.services import custom_run
 
 def test_get_redis():
-    with patch("app.services.custom_run.redis") as mock_redis:
-        with patch("app.services.custom_run._redis", None):
+    with patch("lib.custom_run.redis") as mock_redis:
+        with patch("lib.custom_run._redis", None):
             r = custom_run.get_redis()
             mock_redis.from_url.assert_called_once()
             assert r is mock_redis.from_url.return_value
