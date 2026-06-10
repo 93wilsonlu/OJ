@@ -7,6 +7,7 @@ RUN pip install uv
 COPY pyproject.toml .
 RUN uv sync --no-dev
 
+COPY lib/ lib/
 COPY app/ app/
 COPY alembic/ alembic/
 COPY alembic.ini .

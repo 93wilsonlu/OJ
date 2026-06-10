@@ -2,7 +2,6 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-import redis
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,27 +15,14 @@ from app.schemas.submission import SubmissionRunCreate
 from app.services import exam as exam_service
 from app.services import proctoring as proctoring_service
 from app.services import queue as queue_service
+from lib.custom_run import (
+    RUN_RESULT_TTL_SECONDS,
+    _active_key,
+    _run_key,
+    get_redis,
+)
 
-RUN_RESULT_TTL_SECONDS = 10 * 60
 RUN_RATE_LIMIT_SECONDS = 5
-RUN_QUEUE_MAX_LENGTH = 100
-
-_redis: redis.Redis | None = None
-
-
-def get_redis() -> redis.Redis:
-    global _redis
-    if _redis is None:
-        _redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
-    return _redis
-
-
-def _run_key(run_id: uuid.UUID | str) -> str:
-    return f"custom_run:{run_id}"
-
-
-def _active_key(candidate_id: uuid.UUID) -> str:
-    return f"custom_run_active:{candidate_id}"
 
 
 def _rate_key(candidate_id: uuid.UUID) -> str:
@@ -106,9 +92,6 @@ async def create_run(
     if not redis_client.set(rate_key, str(run_id), nx=True, ex=RUN_RATE_LIMIT_SECONDS):
         raise HTTPException(status_code=429, detail="Wait before running again")
 
-    if queue_service.get_run_queue().count >= RUN_QUEUE_MAX_LENGTH:
-        raise HTTPException(status_code=429, detail="Run queue is busy. Please try again later")
-
     payload = {
         "run_id": str(run_id),
         "candidate_id": str(current_user.user_id),
@@ -119,6 +102,8 @@ async def create_run(
         "stdin": data.stdin,
         "status": "queued",
         "created_at": datetime.now(UTC).isoformat(),
+        "time_limit": problem.time_limit,
+        "memory_limit": problem.memory_limit,
     }
 
     redis_client.set(active_key, str(run_id), ex=RUN_RESULT_TTL_SECONDS)

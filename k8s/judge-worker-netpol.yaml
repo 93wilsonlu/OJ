@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: judge-worker-netpol
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: judge-worker
+  policyTypes:
+  - Egress
+  egress:
+  # GCP APIs: Pub/Sub, GCS, Workload Identity token endpoint
+  - ports:
+    - port: 443
+      protocol: TCP
+  # PostgreSQL on the Compute Engine VM
+  - ports:
+    - port: 5432
+      protocol: TCP
+  # Redis on the Compute Engine VM
+  - ports:
+    - port: 6379
+      protocol: TCP

@@ -117,7 +117,7 @@ export async function apiUpdateTestCase(
   if (data.inputFile) form.append('input_file', data.inputFile)
   if (data.expectedFile) form.append('expected_file', data.expectedFile)
 
-  const res = await fetch(`${BASE}/problems/${problemId}/test-cases/${testcaseId}`, {
+  const res = await fetch(`${BASE}/problems/${problemId}/testcases/${testcaseId}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}` },
     body: form,
@@ -131,7 +131,7 @@ export async function apiDeleteTestCase(
   problemId: string,
   testcaseId: string,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/problems/${problemId}/test-cases/${testcaseId}`, {
+  const res = await fetch(`${BASE}/problems/${problemId}/testcases/${testcaseId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })

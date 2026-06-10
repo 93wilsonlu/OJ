@@ -23,11 +23,18 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
 
+      - name: Install system dependencies
+        run: sudo apt-get install -y g++ gcc
+
       - name: Install dependencies
         run: uv sync --frozen --extra dev
 
       - name: Run tests
         run: uv run pytest -q
+
+      - name: Build Dockerfile.worker
+        working-directory: .
+        run: docker build -f backend/Dockerfile.worker -t judge-worker-ci backend/
 
   frontend:
     name: Frontend (tsc + vitest + build)

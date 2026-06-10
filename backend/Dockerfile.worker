@@ -1,7 +1,6 @@
 FROM python:3.12-slim
 
-# Install docker-cli just in case we need it for debugging
-RUN apt-get update && apt-get install -y docker.io && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y g++ gcc && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -10,7 +9,7 @@ RUN pip install uv
 COPY pyproject.toml .
 RUN uv sync --no-dev
 
-COPY app/ app/
+COPY lib/ lib/
 COPY worker.py .
 
 CMD ["sh", "-c", "uv run python worker.py"]

@@ -23,22 +23,6 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    volumes:
-      - minio_data:/data
-    ports:
-      - "9001:9001"   # MinIO console (dev only)
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   api:
     build:
       context: ./backend
@@ -47,79 +31,36 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
       REDIS_URL: redis://redis:6379/0
-      MINIO_ENDPOINT: minio:9000
-      MINIO_SECURE: "false"
-      MINIO_BUCKET: "oj-storage"
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/adc.json
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      minio:
         condition: service_healthy
     command: >
       sh -c "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
-
-  judge-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.worker
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
-      REDIS_URL: redis://redis:6379/0
-      MINIO_ENDPOINT: minio:9000
-      MINIO_SECURE: "false"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    privileged: true
-    security_opt:
-      - seccomp:unconfined
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro
 
-  judge-monitor:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.worker
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
-      REDIS_URL: redis://redis:6379/0
-      MINIO_ENDPOINT: minio:9000
-      MINIO_SECURE: "false"
-    command: ["sh", "-c", "uv run python worker.py monitor"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  run-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.worker
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://oj:oj@postgres:5432/oj
-      REDIS_URL: redis://redis:6379/0
-      MINIO_ENDPOINT: minio:9000
-      MINIO_SECURE: "false"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: >
-      sh -c "uv run rq worker run --with-scheduler --url $$REDIS_URL"
-    privileged: true
-    security_opt:
-      - seccomp:unconfined
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+  # worker:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile.worker
+  #   environment:
+  #     GOOGLE_APPLICATION_CREDENTIALS: /tmp/adc.json
+  #     GCS_BUCKET: ${GCS_BUCKET}
+  #     GCS_PROJECT: ${GCS_PROJECT}
+  #     PUBSUB_JUDGE_TOPIC: ${PUBSUB_JUDGE_TOPIC}
+  #     PUBSUB_RUN_TOPIC: ${PUBSUB_RUN_TOPIC}
+  #     PUBSUB_JUDGE_SUBSCRIPTION: ${PUBSUB_JUDGE_SUBSCRIPTION}
+  #     PUBSUB_RUN_SUBSCRIPTION: ${PUBSUB_RUN_SUBSCRIPTION}
+  #     CALLBACK_URL: http://api:8000
+  #     INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+  #   depends_on:
+  #     api:
+  #       condition: service_started
+  #   volumes:
+  #     - ~/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro
 
   nginx:
     build:
@@ -159,6 +100,5 @@ services:
 
 volumes:
   postgres_data:
-  minio_data:
   prometheus_data:
   grafana_data:

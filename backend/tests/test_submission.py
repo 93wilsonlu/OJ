@@ -165,17 +165,18 @@ async def test_create_submission_success(mock_put, mock_enqueue):
     candidate_id = uuid.uuid4()
     problem_id = uuid.uuid4()
     assignment = _make_assignment(exam.exam_id, candidate_id, problem_id)
+    problem = _make_problem()
 
     db = _mock_db()
-    db.get = AsyncMock(return_value=exam)
+    db.get = AsyncMock(side_effect=[exam, problem])
 
-    # First execute call → assignment check (found)
-    # Second execute call → rate limit check (none found)
     assignment_result = MagicMock()
     assignment_result.scalar_one_or_none.return_value = assignment
     no_result = MagicMock()
     no_result.scalar_one_or_none.return_value = None
-    db.execute = AsyncMock(side_effect=[assignment_result, no_result, no_result])
+    tc_result = MagicMock()
+    tc_result.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(side_effect=[assignment_result, no_result, no_result, tc_result])
 
     data = SubmissionCreate(
         exam_id=exam.exam_id,
@@ -190,7 +191,11 @@ async def test_create_submission_success(mock_put, mock_enqueue):
     assert submission.candidate_id == candidate_id
     assert submission.language == "python3"
     mock_put.assert_called_once()
-    mock_enqueue.assert_called_once_with(submission.submission_id)
+    mock_enqueue.assert_called_once()
+    call_msg = mock_enqueue.call_args[0][0]
+    assert call_msg["submission_id"] == str(submission.submission_id)
+    assert "test_cases" in call_msg
+    assert "problem" in call_msg
     db.commit.assert_awaited_once()
 
 
@@ -275,17 +280,20 @@ async def test_create_submission_anti_cheat_active_attempt_success(
         deadline_at=now + timedelta(minutes=10),
     )
     assignment = _make_assignment(exam.exam_id, candidate_id, problem_id)
+    problem = _make_problem()
 
     db = _mock_db()
-    db.get = AsyncMock(return_value=exam)
+    db.get = AsyncMock(side_effect=[exam, problem])
     attempt_result = MagicMock()
     attempt_result.scalar_one_or_none.return_value = attempt
     assignment_result = MagicMock()
     assignment_result.scalar_one_or_none.return_value = assignment
     no_result = MagicMock()
     no_result.scalar_one_or_none.return_value = None
+    tc_result = MagicMock()
+    tc_result.scalars.return_value.all.return_value = []
     db.execute = AsyncMock(
-        side_effect=[attempt_result, assignment_result, no_result, no_result]
+        side_effect=[attempt_result, assignment_result, no_result, no_result, tc_result]
     )
 
     data = SubmissionCreate(
@@ -299,7 +307,7 @@ async def test_create_submission_anti_cheat_active_attempt_success(
 
     assert submission.status == "pending"
     mock_put.assert_called_once()
-    mock_enqueue.assert_called_once_with(submission.submission_id)
+    mock_enqueue.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -591,15 +599,16 @@ async def test_candidate_cannot_create_custom_run_anti_cheat_without_attempt():
 
 @pytest.mark.asyncio
 @patch("app.services.custom_run.queue_service.enqueue_custom_run")
-@patch("app.services.custom_run.queue_service.get_run_queue")
 @patch("app.services.custom_run.get_redis")
-async def test_candidate_can_create_custom_run(mock_get_redis, mock_get_run_queue, mock_enqueue):
+async def test_candidate_can_create_custom_run(mock_get_redis, mock_enqueue):
     candidate = _make_user("candidate")
     exam = _make_exam()
     problem_id = uuid.uuid4()
     problem = MagicMock()
     problem.problem_id = problem_id
     problem.allowed_langs = ["python3"]
+    problem.time_limit = 1000
+    problem.memory_limit = 256
     assignment = _make_assignment(exam.exam_id, candidate.user_id, problem_id)
 
     db = _mock_db()
@@ -611,7 +620,6 @@ async def test_candidate_can_create_custom_run(mock_get_redis, mock_get_run_queu
     db.execute = AsyncMock(side_effect=[assignment_result, no_state_result])
 
     mock_get_redis.return_value = _FakeRedis()
-    mock_get_run_queue.return_value = MagicMock(count=0)
 
     result = await custom_run.create_run(
         db,

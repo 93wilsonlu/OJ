@@ -123,7 +123,7 @@ async def create_test_case(
     return TestCaseOut.model_validate(tc)
 
 
-@router.patch("/{problem_id}/test-cases/{testcase_id}", response_model=TestCaseOut)
+@router.patch("/{problem_id}/testcases/{testcase_id}", response_model=TestCaseOut)
 async def update_test_case(
     problem_id: uuid.UUID,
     testcase_id: uuid.UUID,
@@ -149,7 +149,7 @@ async def update_test_case(
     return TestCaseOut.model_validate(tc)
 
 
-@router.delete("/{problem_id}/test-cases/{testcase_id}", status_code=204)
+@router.delete("/{problem_id}/testcases/{testcase_id}", status_code=204)
 async def delete_test_case(
     problem_id: uuid.UUID,
     testcase_id: uuid.UUID,

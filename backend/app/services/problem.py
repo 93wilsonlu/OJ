@@ -115,8 +115,8 @@ async def create_test_case(
     memory_limit_override: int | None = None,
 ) -> TestCase:
     tc_id = uuid.uuid4()
-    input_key = f"test-cases/{problem_id}/{tc_id}/input"
-    expected_key = f"test-cases/{problem_id}/{tc_id}/expected"
+    input_key = f"testcases/{problem_id}/{tc_id}/input"
+    expected_key = f"testcases/{problem_id}/{tc_id}/expected"
 
     await anyio.to_thread.run_sync(storage.put_object, input_key, input_bytes)
     await anyio.to_thread.run_sync(storage.put_object, expected_key, expected_bytes)

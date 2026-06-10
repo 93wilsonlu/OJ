@@ -12,12 +12,17 @@ from app.models.exam_assignment import ExamAssignment
 from app.models.judge_result import JudgeResult
 from app.models.problem import Problem
 from app.models.submission import Submission
+from app.models.test_case import TestCase
 from app.models.user import User
 from app.schemas.submission import SubmissionCreate
 from app.services import exam as exam_service
+import structlog
+
 from app.services import proctoring as proctoring_service
 from app.services import queue as queue_service
 from app.services import storage
+
+logger = structlog.get_logger(__name__)
 
 RATE_LIMIT_SECONDS = 30
 _LANG_EXT = {"python3": "py", "cpp17": "cpp"}
@@ -113,9 +118,38 @@ async def create_submission(
     await db.commit()
     await db.refresh(submission)
 
+    problem = await db.get(Problem, data.problem_id)
+    tc_result = await db.execute(
+        select(TestCase).where(TestCase.problem_id == data.problem_id)
+    )
+    test_cases = tc_result.scalars().all()
+
+    message = {
+        "submission_id": str(submission_id),
+        "language": data.language,
+        "code_storage_key": code_key,
+        "problem": {
+            "problem_id": str(problem.problem_id),
+            "time_limit": problem.time_limit,
+            "memory_limit": problem.memory_limit,
+        },
+        "test_cases": [
+            {
+                "testcase_id": str(tc.testcase_id),
+                "input_data_key": tc.input_data_key,
+                "expected_output_key": tc.expected_output_key,
+                "score_weight": float(tc.score_weight),
+                "time_limit_override": tc.time_limit_override,
+                "memory_limit_override": tc.memory_limit_override,
+            }
+            for tc in test_cases
+        ],
+    }
+
     try:
-        queue_service.enqueue_submission(submission_id)
-    except Exception:
+        queue_service.enqueue_submission(message)
+    except Exception as exc:
+        logger.error("enqueue.failed", submission_id=str(submission_id), error=str(exc), exc_info=True)
         submission.status = "failed"
         db.add(submission)
         await db.commit()

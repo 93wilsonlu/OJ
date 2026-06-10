@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: judge-worker
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: judge-worker
+  template:
+    metadata:
+      labels:
+        app: judge-worker
+    spec:
+      runtimeClassName: gvisor
+      serviceAccountName: judge-worker-ksa
+
+      containers:
+      - name: worker
+        # Replace REGION, PROJECT_ID, and TAG before deploying.
+        image: asia-east1-docker.pkg.dev/project-6d617c10-fed9-46d4-b8e/oj/judge-worker:latest
+        imagePullPolicy: Always
+
+        env:
+        # --- Pub/Sub (replace PROJECT_ID) ---
+        - name: PUBSUB_JUDGE_SUBSCRIPTION
+          value: "projects/project-6d617c10-fed9-46d4-b8e/subscriptions/judge-submissions-sub"
+        - name: PUBSUB_RUN_SUBSCRIPTION
+          value: "projects/project-6d617c10-fed9-46d4-b8e/subscriptions/judge-runs-sub"
+        - name: PUBSUB_JUDGE_TOPIC
+          value: "projects/project-6d617c10-fed9-46d4-b8e/topics/judge-submissions"
+        - name: PUBSUB_RUN_TOPIC
+          value: "projects/project-6d617c10-fed9-46d4-b8e/topics/judge-runs"
+        - name: GCS_BUCKET
+          value: "oj-storage-project-6d617c10-fed9-46d4-b8e"
+        - name: GCS_PROJECT
+          value: "project-6d617c10-fed9-46d4-b8e"
+        - name: CALLBACK_URL
+          valueFrom:
+            secretKeyRef:
+              name: oj-worker-secrets
+              key: CALLBACK_URL
+        - name: INTERNAL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: oj-worker-secrets
+              key: INTERNAL_TOKEN
+
+        # --- Backend VM secrets (DATABASE_URL, REDIS_URL, SECRET_KEY) ---
+        envFrom:
+        - secretRef:
+            name: oj-worker-secrets
+
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+
+        volumeMounts:
+        - name: sandbox-tmp
+          mountPath: /sandbox-tmp
+
+      volumes:
+      - name: sandbox-tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Mi

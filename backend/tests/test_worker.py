@@ -78,36 +78,34 @@ async def test_run_judge_success_passes_box_dir_and_cleans_up(
 
 
 @pytest.mark.asyncio
+@patch("worker._post_webhook", new_callable=AsyncMock)
 @patch("worker._run_judge", new_callable=AsyncMock)
 @patch("worker.storage.get_object_text")
-@patch("worker.AsyncSessionLocal")
-async def test_system_error_does_not_leak_exception_detail(mock_sess, mock_get_text, mock_run):
-    submission = MagicMock()
-    submission.status = "pending"
-    submission.problem_id = uuid.uuid4()
-    submission.language = "python3"
-    submission.code_storage_key = "k"
-    problem = MagicMock(problem_id=uuid.uuid4())
-
-    db = MagicMock()
-    db.get = AsyncMock(side_effect=[submission, problem])
-    exec_result = MagicMock()
-    exec_result.scalars.return_value.all.return_value = []
-    exec_result.scalar_one_or_none.return_value = None
-    db.execute = AsyncMock(return_value=exec_result)
-    db.add = MagicMock()
-    db.commit = AsyncMock()
-
-    mock_sess.return_value.__aenter__ = AsyncMock(return_value=db)
-    mock_sess.return_value.__aexit__ = AsyncMock(return_value=False)
+async def test_system_error_does_not_leak_exception_detail(
+    mock_get_text, mock_run, mock_webhook
+):
     mock_get_text.return_value = "code"
     mock_run.side_effect = RuntimeError("DB password=hunter2 internal trace")
+    mock_webhook.return_value = None  # both judge-start and judge-result calls
 
-    await worker._judge_submission_async(uuid.uuid4())
+    message = {
+        "submission_id": str(uuid.uuid4()),
+        "language": "python3",
+        "code_storage_key": "submissions/x/code.py",
+        "problem": {"problem_id": str(uuid.uuid4()), "time_limit": 1000, "memory_limit": 256},
+        "test_cases": [],
+    }
 
-    added = [c.args[0] for c in db.add.call_args_list]
-    assert added, "expected a JudgeResult to be persisted"
-    jr = added[-1]
-    assert jr.verdict == "System Error"
-    assert jr.error_message == worker.SYSTEM_ERROR_MESSAGE
-    assert "hunter2" not in (jr.error_message or "")
+    await worker._judge_submission_async(message)
+
+    # judge-result webhook should have been called
+    result_call = next(
+        (c for c in mock_webhook.call_args_list if "judge-result" in c.args[0]),
+        None,
+    )
+    assert result_call is not None, "expected judge-result webhook to be called"
+    payload = result_call.args[1]
+    assert payload["verdict"] == "System Error"
+    assert payload["submission_status"] == "failed"
+    assert "hunter2" not in (payload.get("error_message") or "")
+    assert payload["error_message"] == worker.SYSTEM_ERROR_MESSAGE

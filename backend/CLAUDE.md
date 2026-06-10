@@ -3,8 +3,8 @@
 ## Stack
 - **Python 3.12**, FastAPI (async), SQLAlchemy 2 (asyncio), Alembic, PostgreSQL (asyncpg)
 - **Auth**: JWT (HS256, python-jose), bcrypt/passlib; 15-min access tokens + 7-day refresh tokens stored in `refresh_tokens` table
-- **Storage**: MinIO (`minio` SDK) — test case files and submission code stored as objects; keys held in DB
-- **Judge queue**: Redis + RQ; submissions enqueued to `judge` queue, worker calls `worker.judge_submission`
+- **Storage**: GCS (google-cloud-storage) — test case files and submission code stored as GCS objects; keys held in DB
+- **Judge queue**: GCP Pub/Sub — submissions published as full message dicts (include language, code key, problem config, test case keys); worker subscribes and POSTs results back via HTTP webhook
 - **Logging**: structlog
 - **Package manager**: `uv`; deps in `pyproject.toml`
 
@@ -12,7 +12,7 @@
 ```
 app/
   main.py          # FastAPI app, lifespan (bucket init + admin seed), CORS
-  config.py        # pydantic-settings (DATABASE_URL, REDIS_URL, SECRET_KEY, MINIO_*, ADMIN_*)
+  config.py        # pydantic-settings (DATABASE_URL, REDIS_URL, SECRET_KEY, GCS_*, PUBSUB_*, ADMIN_*, CALLBACK_URL, INTERNAL_TOKEN)
   database.py      # async engine, AsyncSessionLocal, Base
   deps.py          # get_current_user (JWT → User)
   models/          # SQLAlchemy ORM models (one file per table)
@@ -22,6 +22,36 @@ app/
 alembic/           # DB migrations
 tests/
 ```
+
+## Judge worker architecture
+
+The worker (`worker.py`) runs as a separate process (GKE in production, `docker-compose worker` service locally).
+
+**Worker dependencies (NO PostgreSQL):**
+- GCP Pub/Sub — subscribe to judge and custom-run topics
+- GCS — read submission code and test case files
+- Redis — store/retrieve custom run state
+- HTTP — POST results to `CALLBACK_URL` (API)
+
+**Judge flow:**
+1. Worker receives Pub/Sub message with full job data (submission_id, language, code_storage_key, problem limits, test case GCS keys)
+2. Worker POSTs `POST {CALLBACK_URL}/api/v1/internal/judge-start` (best-effort, sets status=judging)
+3. Worker executes code in gVisor sandbox
+4. Worker POSTs `POST {CALLBACK_URL}/api/v1/internal/judge-result` with result (3 retries: 1s, 2s, 4s)
+5. API writes JudgeResult + updates submission status
+
+**Custom run flow:**
+1. API stores run payload in Redis (includes problem time_limit, memory_limit)
+2. Worker reads from Redis, runs code, writes result back to Redis
+
+**Stuck submission cleanup:**
+- Worker (or k8s CronJob) POSTs `POST {CALLBACK_URL}/api/v1/internal/mark-stuck`
+- API scans submissions stuck in "judging" longer than `STUCK_SUBMISSION_SECONDS` and marks failed
+
+**Local vs cloud config:**
+- `CALLBACK_URL=http://api:8000` in docker-compose (local)
+- `CALLBACK_URL=https://your-domain.com` in k8s secret (cloud)
+- `INTERNAL_TOKEN` — shared secret for all `/internal/*` endpoints
 
 ## API prefix
 All routes are under `/api/v1`.
@@ -62,4 +92,4 @@ uv run ruff check .                    # lint
 pytest-asyncio with `asyncio_mode = "auto"`. Tests in `tests/`.
 
 ## Environment variables (`.env`)
-`DATABASE_URL`, `REDIS_URL`, `SECRET_KEY`, `MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET/SECURE`, `ADMIN_EMAIL/PASSWORD/NAME`
+`DATABASE_URL`, `REDIS_URL`, `SECRET_KEY`, `GCS_BUCKET`, `GCS_PROJECT`, `PUBSUB_JUDGE_TOPIC`, `PUBSUB_RUN_TOPIC`, `PUBSUB_JUDGE_SUBSCRIPTION`, `PUBSUB_RUN_SUBSCRIPTION`, `ADMIN_EMAIL/PASSWORD/NAME`, `CALLBACK_URL`, `INTERNAL_TOKEN`
