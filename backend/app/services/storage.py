@@ -1,51 +1,39 @@
-import io
+from datetime import timedelta
 
-from minio import Minio
+from google.cloud import storage as gcs
 
 from app.config import settings
 
-_client: Minio | None = None
+_client: gcs.Client | None = None
 
 
-def get_minio() -> Minio:
+def _get_client() -> gcs.Client:
     global _client
     if _client is None:
-        _client = Minio(
-            settings.MINIO_ENDPOINT,
-            access_key=settings.MINIO_ACCESS_KEY,
-            secret_key=settings.MINIO_SECRET_KEY,
-            secure=settings.MINIO_SECURE,
-        )
+        project = settings.GCS_PROJECT or None
+        _client = gcs.Client(project=project)
     return _client
 
 
-def ensure_bucket() -> None:
-    client = get_minio()
-    if not client.bucket_exists(settings.MINIO_BUCKET):
-        client.make_bucket(settings.MINIO_BUCKET)
-
-
 def put_object(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
-    get_minio().put_object(
-        settings.MINIO_BUCKET, key, io.BytesIO(data), len(data), content_type=content_type
-    )
+    blob = _get_client().bucket(settings.GCS_BUCKET).blob(key)
+    blob.upload_from_string(data, content_type=content_type)
 
 
 def get_object_text(key: str) -> str:
-    response = get_minio().get_object(settings.MINIO_BUCKET, key)
-    try:
-        return response.read().decode("utf-8")
-    finally:
-        response.close()
-        response.release_conn()
+    blob = _get_client().bucket(settings.GCS_BUCKET).blob(key)
+    return blob.download_as_text(encoding="utf-8")
 
 
 def delete_object(key: str) -> None:
-    get_minio().remove_object(settings.MINIO_BUCKET, key)
+    blob = _get_client().bucket(settings.GCS_BUCKET).blob(key)
+    blob.delete()
 
 
 def presigned_get_url(key: str, expires_seconds: int = 3600) -> str:
-    from datetime import timedelta
-    return get_minio().presigned_get_object(
-        settings.MINIO_BUCKET, key, expires=timedelta(seconds=expires_seconds)
+    blob = _get_client().bucket(settings.GCS_BUCKET).blob(key)
+    return blob.generate_signed_url(
+        expiration=timedelta(seconds=expires_seconds),
+        method="GET",
+        version="v4",
     )

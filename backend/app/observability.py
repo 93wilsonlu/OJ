@@ -13,7 +13,6 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services import storage
-from app.services.queue import get_queue
 
 METRIC_JUDGE_SUCCESS = "oj:metrics:judge:success_total"
 METRIC_JUDGE_FAILURE = "oj:metrics:judge:failure_total"
@@ -71,13 +70,24 @@ async def check_redis() -> DependencyStatus:
 
 async def check_storage() -> DependencyStatus:
     try:
-        exists = await anyio.to_thread.run_sync(
-            lambda: storage.get_minio().bucket_exists(settings.MINIO_BUCKET),
-            abandon_on_cancel=True,
+        bucket = await anyio.to_thread.run_sync(
+            lambda: storage._get_client().lookup_bucket(settings.GCS_BUCKET)
         )
-        if exists:
+        if bucket is not None:
             return DependencyStatus(ok=True, detail="ok")
-        return DependencyStatus(ok=False, detail=f"bucket {settings.MINIO_BUCKET} not found")
+        return DependencyStatus(ok=False, detail=f"bucket {settings.GCS_BUCKET} not found")
+    except Exception as exc:
+        return DependencyStatus(ok=False, detail=str(exc))
+
+
+async def check_pubsub() -> DependencyStatus:
+    try:
+        from google.cloud import pubsub_v1
+        subscriber = pubsub_v1.SubscriberClient()
+        await anyio.to_thread.run_sync(
+            lambda: subscriber.get_subscription(request={"subscription": settings.PUBSUB_JUDGE_SUBSCRIPTION})
+        )
+        return DependencyStatus(ok=True, detail="ok")
     except Exception as exc:
         return DependencyStatus(ok=False, detail=str(exc))
 
@@ -148,10 +158,7 @@ async def refresh_prometheus_metrics() -> None:
     for dependency, check in checks.items():
         READINESS_UP.labels(dependency=dependency).set(1 if check["ok"] else 0)
 
-    try:
-        QUEUE_LENGTH.set(get_queue().count)
-    except Exception:
-        QUEUE_LENGTH.set(0)
+    QUEUE_LENGTH.set(-1)  # queue depth now tracked via GCP Cloud Monitoring (Pub/Sub)
 
     try:
         client = get_redis_client()

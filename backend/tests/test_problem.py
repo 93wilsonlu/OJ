@@ -37,8 +37,8 @@ def _make_test_case(problem_id: uuid.UUID, is_hidden: bool = False) -> TestCase:
     tc = TestCase()
     tc.testcase_id = uuid.uuid4()
     tc.problem_id = problem_id
-    tc.input_data_key = f"test-cases/{problem_id}/{tc.testcase_id}/input"
-    tc.expected_output_key = f"test-cases/{problem_id}/{tc.testcase_id}/expected"
+    tc.input_data_key = f"testcases/{problem_id}/{tc.testcase_id}/input"
+    tc.expected_output_key = f"testcases/{problem_id}/{tc.testcase_id}/expected"
     tc.is_hidden = is_hidden
     tc.score_weight = 1.0
     return tc
@@ -254,7 +254,7 @@ def test_problem_admin_can_delete_test_case(mock_get_tc, mock_delete_tc):
     client = _client_for(admin)
     try:
         resp = client.delete(
-            f"/api/v1/problems/{problem.problem_id}/test-cases/{tc.testcase_id}"
+            f"/api/v1/problems/{problem.problem_id}/testcases/{tc.testcase_id}"
         )
     finally:
         _clear_overrides()
@@ -326,7 +326,7 @@ def test_candidate_gets_403_on_delete_test_case(mock_get_tc, mock_delete_tc):
     client = _client_for(candidate)
     try:
         resp = client.delete(
-            f"/api/v1/problems/{problem.problem_id}/test-cases/{tc.testcase_id}"
+            f"/api/v1/problems/{problem.problem_id}/testcases/{tc.testcase_id}"
         )
     finally:
         _clear_overrides()
