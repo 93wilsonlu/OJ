@@ -25,7 +25,7 @@ spec:
         - name: UV_CACHE_DIR
           value: /tmp/.uv-cache
         - name: CALLBACK_URL
-          value: "https://oj.braveflamingdog.com/api"
+          value: "https://oj.braveflamingdog.com"
         - name: INTERNAL_TOKEN
           valueFrom:
             secretKeyRef:

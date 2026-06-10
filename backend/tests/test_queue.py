@@ -22,11 +22,12 @@ def test_enqueue_custom_run():
     mock_future = MagicMock()
     mock_publisher.publish.return_value = mock_future
     with patch("app.services.queue._get_publisher", return_value=mock_publisher):
-        run_id = uuid.uuid4()
-        queue.enqueue_custom_run(run_id)
+        message = {
+            "run_id": str(uuid.uuid4()), "language": "python3",
+            "code": "print(1)", "stdin": "", "time_limit": 1000, "memory_limit": 256,
+        }
+        queue.enqueue_custom_run(message)
         mock_publisher.publish.assert_called_once()
-        # Verify the message was published
         call_args = mock_publisher.publish.call_args
-        expected_message = json.dumps({"run_id": str(run_id)}).encode()
-        assert call_args[0][1] == expected_message
+        assert call_args[0][1] == json.dumps(message).encode()
         mock_future.result.assert_called_once()

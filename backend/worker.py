@@ -12,7 +12,13 @@ from google.cloud import pubsub_v1
 from lib import storage
 from lib.config import settings
 from lib.logging import configure_logging
-from lib.services.sandbox import cleanup_box, compile_code, init_box, run_test_case
+from lib.services.sandbox import (
+    cleanup_box,
+    compile_code,
+    init_box,
+    run_custom_input,
+    run_test_case,
+)
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -62,6 +68,10 @@ async def _post_webhook(url: str, payload: dict) -> None:
 
 def judge_submission(message: dict) -> None:
     _get_worker_loop().run_until_complete(_judge_submission_async(message))
+
+
+def handle_custom_run(message: dict) -> None:
+    _get_worker_loop().run_until_complete(_handle_custom_run_async(message))
 
 
 async def _judge_submission_async(message: dict) -> None:
@@ -146,6 +156,75 @@ async def _judge_submission_async(message: dict) -> None:
         )
 
 
+async def _handle_custom_run_async(message: dict) -> None:
+    run_id = message["run_id"]
+    lang = message["language"]
+    code = message["code"]
+    stdin = message.get("stdin", "")
+    time_limit_ms = message["time_limit"]
+    memory_limit_mb = message["memory_limit"]
+
+    logger.info("custom_run.started", run_id=run_id)
+
+    box_id = random.randint(0, 999)
+    box_dir = ""
+    verdict = "System Error"
+    time_ms = 0
+    mem_kb = 0
+    stdout = ""
+    stderr = ""
+    stdout_truncated = False
+    stderr_truncated = False
+    error_message: str | None = SYSTEM_ERROR_MESSAGE
+
+    try:
+        box_dir = init_box(box_id)
+        success, comp_err = compile_code(box_id, lang, code, box_dir)
+        if not success:
+            verdict = "Compile Error"
+            error_message = comp_err
+        else:
+            (
+                verdict,
+                time_ms,
+                mem_kb,
+                stdout,
+                stderr,
+                stdout_truncated,
+                stderr_truncated,
+            ) = run_custom_input(box_id, lang, time_limit_ms, memory_limit_mb, stdin, box_dir)
+            error_message = None
+    except Exception as exc:
+        logger.error(
+            "custom_run.failed",
+            run_id=run_id,
+            error=str(exc),
+            traceback=traceback.format_exc(),
+        )
+    finally:
+        if box_dir:
+            cleanup_box(box_dir)
+
+    try:
+        await _post_webhook(
+            f"{settings.CALLBACK_URL}/api/v1/internal/run-result",
+            {
+                "run_id": run_id,
+                "verdict": verdict,
+                "execution_time": time_ms,
+                "memory_usage": mem_kb,
+                "stdout": stdout,
+                "stderr": stderr,
+                "stdout_truncated": stdout_truncated,
+                "stderr_truncated": stderr_truncated,
+                "error_message": error_message,
+            },
+        )
+        logger.info("custom_run.completed", run_id=run_id, verdict=verdict)
+    except Exception as exc:
+        logger.error("custom_run.result_webhook.failed", run_id=run_id, error=str(exc))
+
+
 def main() -> None:
     subscriber = pubsub_v1.SubscriberClient()
     flow = pubsub_v1.types.FlowControl(max_messages=1)
@@ -155,14 +234,26 @@ def main() -> None:
         judge_submission(data)
         message.ack()
 
+    def on_run(message: pubsub_v1.subscriber.message.Message) -> None:
+        data = json.loads(message.data)
+        handle_custom_run(data)
+        message.ack()
+
     fut_judge = subscriber.subscribe(
         settings.PUBSUB_JUDGE_SUBSCRIPTION, on_judge, flow_control=flow
+    )
+    fut_run = subscriber.subscribe(
+        settings.PUBSUB_RUN_SUBSCRIPTION, on_run, flow_control=flow
     )
     logger.info(
         "worker.started",
         judge_sub=settings.PUBSUB_JUDGE_SUBSCRIPTION,
+        run_sub=settings.PUBSUB_RUN_SUBSCRIPTION,
     )
-    fut_judge.result()
+    try:
+        fut_judge.result()
+    finally:
+        fut_run.cancel()
 
 
 async def _run_judge(

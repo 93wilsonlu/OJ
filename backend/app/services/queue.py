@@ -1,5 +1,4 @@
 import json
-import uuid
 
 from google.cloud import pubsub_v1
 
@@ -23,9 +22,9 @@ def enqueue_submission(message: dict) -> None:
     future.result()
 
 
-def enqueue_custom_run(run_id: uuid.UUID) -> None:
+def enqueue_custom_run(message: dict) -> None:
     future = _get_publisher().publish(
         settings.PUBSUB_RUN_TOPIC,
-        json.dumps({"run_id": str(run_id)}).encode(),
+        json.dumps(message).encode(),
     )
     future.result()

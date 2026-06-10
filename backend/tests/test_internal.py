@@ -1,8 +1,8 @@
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
@@ -186,3 +186,83 @@ def test_mark_stuck_returns_zero_when_none_stuck():
     assert resp.status_code == 200
     assert resp.json()["marked"] == 0
     db.commit.assert_not_awaited()
+
+
+# ── /run-result ────────────────────────────────────────────────────────────────
+
+def _run_result_payload(run_id):
+    return {
+        "run_id": str(run_id),
+        "verdict": "OK",
+        "execution_time": 42,
+        "memory_usage": 1024,
+        "stdout": "hello\n",
+        "stderr": "",
+        "stdout_truncated": False,
+        "stderr_truncated": False,
+        "error_message": None,
+    }
+
+
+def test_run_result_requires_token():
+    client = TestClient(app)
+    resp = client.post("/api/v1/internal/run-result", json=_run_result_payload(uuid.uuid4()))
+    assert resp.status_code == 401
+
+
+def test_run_result_stores_result_and_clears_active_key():
+    candidate_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    initial_record = {"run_id": str(run_id), "candidate_id": str(candidate_id), "status": "queued"}
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = json.dumps(initial_record)
+
+    with patch("app.routers.internal.get_redis", return_value=mock_redis):
+        resp = TestClient(app).post(
+            "/api/v1/internal/run-result",
+            json=_run_result_payload(run_id),
+            headers={"X-Internal-Token": TOKEN},
+        )
+
+    assert resp.status_code == 204
+    mock_redis.setex.assert_called_once()
+    stored = json.loads(mock_redis.setex.call_args[0][2])
+    assert stored["status"] == "completed"
+    assert stored["verdict"] == "OK"
+    assert stored["stdout"] == "hello\n"
+    mock_redis.delete.assert_called_once()
+
+
+def test_run_result_idempotent_when_already_completed():
+    run_id = uuid.uuid4()
+    completed_record = {
+        "run_id": str(run_id), "candidate_id": str(uuid.uuid4()),
+        "status": "completed", "verdict": "OK",
+    }
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = json.dumps(completed_record)
+
+    with patch("app.routers.internal.get_redis", return_value=mock_redis):
+        resp = TestClient(app).post(
+            "/api/v1/internal/run-result",
+            json=_run_result_payload(run_id),
+            headers={"X-Internal-Token": TOKEN},
+        )
+
+    assert resp.status_code == 204
+    mock_redis.setex.assert_not_called()
+
+
+def test_run_result_noop_when_run_not_found():
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = None
+
+    with patch("app.routers.internal.get_redis", return_value=mock_redis):
+        resp = TestClient(app).post(
+            "/api/v1/internal/run-result",
+            json=_run_result_payload(uuid.uuid4()),
+            headers={"X-Internal-Token": TOKEN},
+        )
+
+    assert resp.status_code == 204
+    mock_redis.setex.assert_not_called()

@@ -661,7 +661,11 @@ async def test_candidate_can_create_custom_run(mock_get_redis, mock_enqueue):
 
     assert result["status"] == "queued"
     assert result["run_id"]
-    mock_enqueue.assert_called_once_with(result["run_id"])
+    mock_enqueue.assert_called_once()
+    call_arg = mock_enqueue.call_args[0][0]
+    assert call_arg["run_id"] == str(result["run_id"])
+    assert call_arg["language"] == "python3"
+    assert call_arg["stdin"] == "hello"
 
 
 @pytest.mark.asyncio

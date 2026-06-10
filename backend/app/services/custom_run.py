@@ -92,24 +92,26 @@ async def create_run(
     if not redis_client.set(rate_key, str(run_id), nx=True, ex=RUN_RATE_LIMIT_SECONDS):
         raise HTTPException(status_code=429, detail="Wait before running again")
 
-    payload = {
+    redis_payload = {
         "run_id": str(run_id),
         "candidate_id": str(current_user.user_id),
-        "exam_id": str(data.exam_id),
-        "problem_id": str(data.problem_id),
+        "status": "queued",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    pubsub_message = {
+        "run_id": str(run_id),
+        "candidate_id": str(current_user.user_id),
         "language": data.language,
         "code": data.code,
         "stdin": data.stdin,
-        "status": "queued",
-        "created_at": datetime.now(UTC).isoformat(),
         "time_limit": problem.time_limit,
         "memory_limit": problem.memory_limit,
     }
 
     redis_client.set(active_key, str(run_id), ex=RUN_RESULT_TTL_SECONDS)
-    redis_client.setex(_run_key(run_id), RUN_RESULT_TTL_SECONDS, json.dumps(payload))
+    redis_client.setex(_run_key(run_id), RUN_RESULT_TTL_SECONDS, json.dumps(redis_payload))
     try:
-        queue_service.enqueue_custom_run(run_id)
+        queue_service.enqueue_custom_run(pubsub_message)
     except Exception:
         redis_client.delete(active_key)
         redis_client.delete(_run_key(run_id))

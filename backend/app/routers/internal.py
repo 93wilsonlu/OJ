@@ -1,4 +1,5 @@
 import hmac
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -12,6 +13,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.judge_result import JudgeResult
 from app.models.submission import Submission
+from lib.custom_run import RUN_RESULT_TTL_SECONDS, _active_key, _run_key, get_redis
 
 logger = structlog.get_logger(__name__)
 
@@ -43,6 +45,18 @@ class JudgeResultIn(BaseModel):
 
 class JudgeStartIn(BaseModel):
     submission_id: uuid.UUID
+
+
+class RunResultIn(BaseModel):
+    run_id: uuid.UUID
+    verdict: str
+    execution_time: int       # ms
+    memory_usage: int         # KB
+    stdout: str = ""
+    stderr: str = ""
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
+    error_message: str | None = None
 
 
 @router.post("/judge-start", status_code=204)
@@ -93,6 +107,37 @@ async def judge_result(
         submission_id=str(body.submission_id),
         verdict=body.verdict,
     )
+
+
+@router.post("/run-result", status_code=204)
+async def run_result(
+    body: RunResultIn,
+    _: None = Depends(_require_token),
+) -> None:
+    redis_client = get_redis()
+    key = _run_key(body.run_id)
+    raw = redis_client.get(key)
+    if raw is None:
+        return  # expired or never existed; idempotent
+    record = json.loads(raw)
+    if record.get("status") not in ("queued", "running"):
+        return  # already completed; idempotent
+    record.update({
+        "status": "completed",
+        "verdict": body.verdict,
+        "execution_time": body.execution_time,
+        "memory_usage": body.memory_usage,
+        "stdout": body.stdout,
+        "stderr": body.stderr,
+        "stdout_truncated": body.stdout_truncated,
+        "stderr_truncated": body.stderr_truncated,
+        "error_message": body.error_message,
+    })
+    redis_client.setex(key, RUN_RESULT_TTL_SECONDS, json.dumps(record))
+    candidate_id = record.get("candidate_id")
+    if candidate_id:
+        redis_client.delete(_active_key(uuid.UUID(candidate_id)))
+    logger.info("internal.run_result.stored", run_id=str(body.run_id), verdict=body.verdict)
 
 
 @router.post("/mark-stuck", status_code=200)
