@@ -48,6 +48,10 @@ class ExamProblemResultOut(BaseModel):
     best_score: float | None
     submission_count: int
     latest_verdict: str | None
+    display_submission_id: uuid.UUID | None
+    display_submission_language: str | None
+    display_submission_submitted_at: datetime | None
+    display_submission_verdict: str | None
 
 
 class ExamCandidateResultOut(BaseModel):

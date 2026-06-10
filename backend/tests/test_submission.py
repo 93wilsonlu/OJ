@@ -546,6 +546,32 @@ def test_interviewer_can_search_submissions_by_candidate(mock_list):
     )
 
 
+@patch("app.routers.submission.submission_service.list_submissions", new_callable=AsyncMock)
+def test_problem_admin_cannot_list_submissions(mock_list):
+    problem_admin = _make_user("problem_admin")
+    client = _client_for(problem_admin)
+    try:
+        resp = client.get("/api/v1/submissions")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 403
+    mock_list.assert_not_called()
+
+
+@patch("app.routers.submission.submission_service.get_submission", new_callable=AsyncMock)
+def test_problem_admin_cannot_get_submission_detail(mock_get):
+    problem_admin = _make_user("problem_admin")
+    client = _client_for(problem_admin)
+    try:
+        resp = client.get(f"/api/v1/submissions/{uuid.uuid4()}")
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 403
+    mock_get.assert_not_called()
+
+
 class _FakeRedis:
     def __init__(self):
         self.values = {}

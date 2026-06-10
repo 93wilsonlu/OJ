@@ -31,7 +31,6 @@ const NAV_LINKS: Record<UserOut['role'], NavItem[]> = {
   ],
   problem_admin: [
     { label: 'Problems', to: '/problems' },
-    { label: 'Submissions', to: '/submissions' },
   ],
   admin: [
     { label: 'Users', to: '/admin/users' },
@@ -92,7 +91,10 @@ export default function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     if (!activeExamLock || !proctoring.forceEnded) return
     clearActiveExamLock(activeExamLock.examId)
-    navigate(`/exams/${activeExamLock.examId}`, { replace: true })
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {})
+    }
+    navigate('/exams', { replace: true })
   }, [activeExamLock, navigate, proctoring.forceEnded])
 
   async function handleLogout() {
@@ -103,6 +105,8 @@ export default function AppShell({ children }: AppShellProps) {
       setLoggingOut(false)
     }
   }
+
+  const showFullscreenWarning = proctoring.violating
 
   return (
     <div className="min-h-dvh bg-oj-bg text-oj-fg">
@@ -191,10 +195,10 @@ export default function AppShell({ children }: AppShellProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-oj-bg/95 px-4">
           <div className="max-w-md rounded-lg border border-oj-border bg-white p-6 text-center shadow-lg">
             <h2 className="text-lg font-semibold text-oj-fg">
-              {proctoring.started ? 'Return to fullscreen' : 'Fullscreen required'}
+              {showFullscreenWarning ? 'Return to fullscreen' : 'Fullscreen required'}
             </h2>
             <p className="mt-3 text-sm leading-6 text-oj-fg-muted">
-              {proctoring.started
+              {showFullscreenWarning
                 ? `You must return to fullscreen and keep this tab focused. This test will end in ${proctoring.remainingSeconds} seconds.`
                 : 'Enter fullscreen mode to continue this exam.'}
             </p>
@@ -208,7 +212,7 @@ export default function AppShell({ children }: AppShellProps) {
               onClick={proctoring.enterFullscreen}
               className="mt-5 rounded-md bg-oj-accent px-4 py-2 text-sm font-semibold text-white hover:bg-oj-accent-dim"
             >
-              Enter fullscreen
+              {showFullscreenWarning ? 'Return to fullscreen' : 'Enter fullscreen'}
             </button>
           </div>
         </div>

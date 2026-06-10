@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 import { vi, beforeEach } from 'vitest'
 import AppShell from '../src/components/AppShell'
 import * as useAuthModule from '../src/hooks/useAuth'
+import * as useExamProctoringModule from '../src/hooks/useExamProctoring'
 import { setActiveExamLock } from '../src/utils/activeExamLock'
 
 const mockLogout = vi.fn()
@@ -54,6 +55,7 @@ describe('AppShell nav links', () => {
     renderShell()
     expect(screen.getByRole('link', { name: 'Problems' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Submissions' })).not.toBeInTheDocument()
   })
 
   test('candidate sees My Exams link', () => {
@@ -104,6 +106,30 @@ describe('AppShell nav links', () => {
     expect(screen.queryByRole('link', { name: 'Submissions' })).not.toBeInTheDocument()
     expect(screen.getByText('Submissions')).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByText('/exams/exam-1/submissions')).toBeInTheDocument()
+  })
+
+  test('fullscreen violation shows return countdown warning', () => {
+    mockUser('candidate')
+    setActiveExamLock({
+      examId: 'exam-1',
+      path: '/exams/exam-1',
+    })
+    vi.spyOn(useExamProctoringModule, 'useExamProctoring').mockReturnValue({
+      started: false,
+      violating: true,
+      remainingSeconds: 3,
+      locked: false,
+      forceEnded: false,
+      error: null,
+      enterFullscreen: vi.fn(),
+      eventType: 'fullscreen_lost',
+    })
+
+    renderShell()
+
+    expect(screen.getByRole('heading', { name: 'Return to fullscreen' })).toBeInTheDocument()
+    expect(screen.getByText(/This test will end in 3 seconds/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Return to fullscreen' })).toBeInTheDocument()
   })
 
   test('interviewer sees Exams link', () => {

@@ -123,6 +123,10 @@ describe('SubmissionStatus', () => {
 
     renderScopedPage()
 
+    expect(screen.getByRole('link', { name: 'Back to exam' })).toHaveAttribute(
+      'href',
+      '/exams/exam-1',
+    )
     expect(screen.getByRole('link', { name: 'Use in editor' })).toHaveAttribute(
       'href',
       '/exams/exam-1/problems/problem-1?fromSubmission=submission-1',

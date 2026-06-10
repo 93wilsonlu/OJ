@@ -29,14 +29,16 @@ function examStatus(exam: Exam, now: Date): ExamStatus {
 }
 
 function formatDuration(ms: number) {
-  const totalMinutes = Math.max(0, Math.ceil(ms / 60000))
-  const days = Math.floor(totalMinutes / 1440)
-  const hours = Math.floor((totalMinutes % 1440) / 60)
-  const minutes = totalMinutes % 60
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000))
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
 
-  if (days > 0) return `${days}d ${hours}h`
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
+  if (minutes > 0) return `${minutes}m ${seconds}s`
+  return `${seconds}s`
 }
 
 function remainingLabel(exam: Exam, now: Date) {
@@ -74,7 +76,7 @@ export default function ExamView() {
   const [candidateLocked, setCandidateLocked] = useState(false)
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30000)
+    const timer = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(timer)
   }, [])
 
@@ -140,6 +142,7 @@ export default function ExamView() {
   const status = examStatus(exam, now)
   const canSubmit = user?.role === 'candidate' && Boolean(access?.can_solve) && !candidateLocked
   const isStaff = user?.role === 'interviewer' || user?.role === 'admin'
+  const showBackToExams = user?.role !== 'candidate' || !access?.can_solve
 
   async function handleStart() {
     if (!examId || !exam) return
@@ -186,11 +189,13 @@ export default function ExamView() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-5">
-        <Link to="/exams" className="text-sm font-medium text-oj-accent hover:underline">
-          Back to exams
-        </Link>
-      </div>
+      {showBackToExams && (
+        <div className="mb-5">
+          <Link to="/exams" className="text-sm font-medium text-oj-accent hover:underline">
+            Back to exams
+          </Link>
+        </div>
+      )}
 
       <section className="mb-6 rounded-lg border border-oj-border bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">

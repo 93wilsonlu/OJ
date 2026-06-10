@@ -10,6 +10,13 @@ export interface Submission {
   submitted_at: string
 }
 
+export interface JudgeCaseResult {
+  index: number
+  verdict: string
+  execution_time: number | null
+  memory_usage: number | null
+}
+
 export interface JudgeResult {
   result_id: string
   submission_id: string
@@ -20,6 +27,7 @@ export interface JudgeResult {
   execution_time: number | null
   memory_usage: number | null
   error_message: string | null
+  case_results?: JudgeCaseResult[]
   judged_at: string
 }
 

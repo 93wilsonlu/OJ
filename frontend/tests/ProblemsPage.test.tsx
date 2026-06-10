@@ -28,6 +28,12 @@ const renderPage = () => {
   )
 }
 
+function problemTitleOrder() {
+  return screen
+    .getAllByRole('link', { name: /Array Sum|Graph Traversal/ })
+    .map((link) => link.textContent)
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
   mockAuth()
@@ -60,7 +66,7 @@ beforeEach(() => {
       sample_input: null,
       sample_output: null,
       created_by: null,
-      created_at: '2026-05-31T00:00:00Z',
+      created_at: '2026-06-02T00:00:00Z',
     },
   ])
 })
@@ -186,5 +192,54 @@ describe('ProblemsPage', () => {
       const badges = screen.getAllByText(/easy|hard/)
       expect(badges.length).toBeGreaterThanOrEqual(2)
     })
+  })
+
+  test('filters problems by title search', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Array Sum')).toBeInTheDocument()
+      expect(screen.getByText('Graph Traversal')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByPlaceholderText('Search problems...'), 'graph')
+
+    expect(screen.getByText('Graph Traversal')).toBeInTheDocument()
+    expect(screen.queryByText('Array Sum')).not.toBeInTheDocument()
+
+    await user.clear(screen.getByPlaceholderText('Search problems...'))
+    await user.type(screen.getByPlaceholderText('Search problems...'), 'missing')
+    expect(screen.getByText('No problems match your search.')).toBeInTheDocument()
+  })
+
+  test('sorts problems by created time', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Array Sum')).toBeInTheDocument()
+    })
+
+    await user.selectOptions(screen.getByLabelText('Sort problems'), 'created_newest')
+    expect(problemTitleOrder()).toEqual(['Graph Traversal', 'Array Sum'])
+
+    await user.selectOptions(screen.getByLabelText('Sort problems'), 'created_oldest')
+    expect(problemTitleOrder()).toEqual(['Array Sum', 'Graph Traversal'])
+  })
+
+  test('sorts problems by difficulty', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Array Sum')).toBeInTheDocument()
+    })
+
+    await user.selectOptions(screen.getByLabelText('Sort problems'), 'difficulty_hard')
+    expect(problemTitleOrder()).toEqual(['Graph Traversal', 'Array Sum'])
+
+    await user.selectOptions(screen.getByLabelText('Sort problems'), 'difficulty_easy')
+    expect(problemTitleOrder()).toEqual(['Array Sum', 'Graph Traversal'])
   })
 })

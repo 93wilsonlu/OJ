@@ -117,6 +117,10 @@ async def get_exam_results(
                         best_score=problem.best_score,
                         submission_count=problem.submission_count,
                         latest_verdict=problem.latest_verdict,
+                        display_submission_id=problem.display_submission_id,
+                        display_submission_language=problem.display_submission_language,
+                        display_submission_submitted_at=problem.display_submission_submitted_at,
+                        display_submission_verdict=problem.display_submission_verdict,
                     )
                     for problem in candidate.problems
                 ],

@@ -39,6 +39,10 @@ export interface ExamProblemResult {
   best_score: number | null
   submission_count: number
   latest_verdict: string | null
+  display_submission_id: string | null
+  display_submission_language: string | null
+  display_submission_submitted_at: string | null
+  display_submission_verdict: string | null
 }
 
 export interface ExamCandidateResult {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getErrorMessage } from '../api/errors'
 import { apiFullscreenExit, apiFullscreenReturn } from '../api/exams'
 
-const WARNING_SECONDS = 5
+const WARNING_SECONDS = 3
 
 function isCompliant() {
   return Boolean(document.fullscreenElement)
@@ -54,15 +54,18 @@ export function useExamProctoring(
   }, [enabled, examId, getAccessToken])
 
   const reportReturn = useCallback(async () => {
-    if (!examId || !enabled) return
+    if (!examId || !enabled) return false
     try {
       const token = await getAccessToken()
       if (!token) throw new Error('Session expired. Please sign in again.')
       const attempt = await apiFullscreenReturn(token, examId)
-      setForceEnded(attempt.status === 'force_ended')
+      const isForceEnded = attempt.status === 'force_ended'
+      setForceEnded(isForceEnded)
       setError(null)
+      return isForceEnded
     } catch (e) {
       setError(getErrorMessage(e, 'Failed to report fullscreen return'))
+      return false
     }
   }, [enabled, examId, getAccessToken])
 
@@ -125,7 +128,9 @@ export function useExamProctoring(
 
       if (elapsedMs >= WARNING_SECONDS * 1000 && !forceEndReportedRef.current) {
         forceEndReportedRef.current = true
-        void reportReturn()
+        void reportReturn().then((isForceEnded) => {
+          if (!isForceEnded) forceEndReportedRef.current = false
+        })
       }
     }, 250)
 

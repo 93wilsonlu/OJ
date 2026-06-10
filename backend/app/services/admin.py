@@ -28,6 +28,10 @@ class ExamProblemResult:
     submission_count: int = 0
     latest_verdict: str | None = None
     latest_submitted_at: datetime | None = None
+    display_submission_id: uuid.UUID | None = None
+    display_submission_language: str | None = None
+    display_submission_submitted_at: datetime | None = None
+    display_submission_verdict: str | None = None
 
 
 @dataclass
@@ -48,6 +52,10 @@ class ExamResults:
     exam_id: uuid.UUID
     title: str
     candidates: list[ExamCandidateResult]
+
+
+def _submission_verdict(submission: Submission, judge_result: JudgeResult | None) -> str:
+    return judge_result.verdict if judge_result else submission.status
 
 
 def _require_admin(user: User) -> None:
@@ -300,7 +308,27 @@ async def get_exam_results(
             or submission.submitted_at > problem_row.latest_submitted_at
         ):
             problem_row.latest_submitted_at = submission.submitted_at
-            problem_row.latest_verdict = judge_result.verdict if judge_result else submission.status
+            problem_row.latest_verdict = _submission_verdict(submission, judge_result)
+
+        is_accepted = judge_result is not None and judge_result.verdict == "Accepted"
+        should_display_submission = False
+        if is_accepted:
+            should_display_submission = (
+                problem_row.display_submission_verdict != "Accepted"
+                or problem_row.display_submission_submitted_at is None
+                or submission.submitted_at > problem_row.display_submission_submitted_at
+            )
+        elif problem_row.display_submission_verdict != "Accepted":
+            should_display_submission = (
+                problem_row.display_submission_submitted_at is None
+                or submission.submitted_at > problem_row.display_submission_submitted_at
+            )
+
+        if should_display_submission:
+            problem_row.display_submission_id = submission.submission_id
+            problem_row.display_submission_language = submission.language
+            problem_row.display_submission_submitted_at = submission.submitted_at
+            problem_row.display_submission_verdict = _submission_verdict(submission, judge_result)
 
         if judge_result is not None:
             score = float(judge_result.score)

@@ -78,11 +78,11 @@ describe('useExamProctoring hook', () => {
     act(() => {
       vi.advanceTimersByTime(2000)
     })
-    expect(result.current.remainingSeconds).toBe(3)
+    expect(result.current.remainingSeconds).toBe(1)
 
-    // Advance timers past WARNING_SECONDS (5s)
+    // Advance timers past WARNING_SECONDS (3s)
     await act(async () => {
-      vi.advanceTimersByTime(4000)
+      vi.advanceTimersByTime(2000)
     })
     expect(result.current.remainingSeconds).toBe(0)
     

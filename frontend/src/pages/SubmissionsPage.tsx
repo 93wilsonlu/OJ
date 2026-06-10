@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/errors'
 import { apiListSubmissions } from '../api/submissions'
 import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
-import type { SubmissionListItem } from '../types/submission'
+import type { JudgeCaseResult, JudgeResult, SubmissionListItem } from '../types/submission'
 import { formatDate, formatScore } from '../utils/format'
 
 function verdictOf(submission: SubmissionListItem) {
@@ -13,6 +14,28 @@ function verdictOf(submission: SubmissionListItem) {
 
 function uniqueVerdicts(submissions: SubmissionListItem[]) {
   return [...new Set(submissions.map(verdictOf))].sort()
+}
+
+function testSummary(judgeResult: JudgeResult | null) {
+  if (!judgeResult) return '-'
+  const passed = judgeResult.passed_count
+  const total = judgeResult.total_count
+  if (passed === null || passed === undefined) return '-'
+  return passed === total
+    ? `All Accepted (${passed}/${total})`
+    : `Not Accepted (${passed}/${total})`
+}
+
+function caseRows(judgeResult: JudgeResult | null) {
+  if (!judgeResult) return []
+  if ((judgeResult.case_results ?? []).length > 0) return judgeResult.case_results ?? []
+  if (judgeResult.total_count <= 0) return []
+  return Array.from({ length: judgeResult.total_count }, (_, index) => ({
+    index: index + 1,
+    verdict: index < (judgeResult.passed_count ?? 0) ? 'Accepted' : judgeResult.verdict,
+    execution_time: null,
+    memory_usage: null,
+  }))
 }
 
 export default function SubmissionsPage() {
@@ -24,6 +47,10 @@ export default function SubmissionsPage() {
   const [query, setQuery] = useState('')
   const [appliedQuery, setAppliedQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [caseHover, setCaseHover] = useState<{
+    rows: JudgeCaseResult[]
+    anchor: DOMRect
+  } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -86,15 +113,26 @@ export default function SubmissionsPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-oj-fg">
-          {isCandidate ? 'My Submissions' : 'Submissions'}
-        </h1>
-        <p className="text-sm text-oj-fg-muted mt-1">
-          {isCandidate
-            ? 'All of your submitted answers across assigned problems.'
-            : 'Submission status for all candidates.'}
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-oj-fg">
+            {isCandidate ? 'My Submissions' : 'Submissions'}
+          </h1>
+          <p className="text-sm text-oj-fg-muted mt-1">
+            {isCandidate
+              ? 'All of your submitted answers across assigned problems.'
+              : 'Submission status for all candidates.'}
+          </p>
+        </div>
+        {examId && (
+          <Link
+            to={`/exams/${examId}`}
+            className="rounded-md border border-oj-border bg-white px-3 py-1.5 text-xs font-semibold text-oj-fg
+                       hover:border-oj-accent hover:text-oj-accent"
+          >
+            Back to exam
+          </Link>
+        )}
       </div>
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
@@ -168,6 +206,9 @@ export default function SubmissionsPage() {
                   Score
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-oj-fg-muted">
+                  Tests
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-oj-fg-muted">
                   Submitted
                 </th>
                 <th className="px-4 py-3 text-right font-semibold text-oj-fg-muted">
@@ -178,6 +219,7 @@ export default function SubmissionsPage() {
             <tbody className="divide-y divide-oj-border">
               {filteredSubmissions.map((submission) => {
                 const verdict = verdictOf(submission)
+                const rows = caseRows(submission.judge_result)
                 return (
                   <tr key={submission.submission_id} className="transition-colors hover:bg-red-50/40">
                     <td className="px-4 py-3">
@@ -203,6 +245,34 @@ export default function SubmissionsPage() {
                     <td className="px-4 py-3 text-right text-oj-fg font-mono">
                       {formatScore(submission.judge_result?.score)}
                     </td>
+                    <td className="px-4 py-3">
+                      <div
+                        className="inline-block"
+                        onMouseEnter={(event) => {
+                          if (rows.length > 0) {
+                            setCaseHover({
+                              rows,
+                              anchor: event.currentTarget.getBoundingClientRect(),
+                            })
+                          }
+                        }}
+                        onMouseLeave={() => setCaseHover(null)}
+                        onFocus={(event) => {
+                          if (rows.length > 0) {
+                            setCaseHover({
+                              rows,
+                              anchor: event.currentTarget.getBoundingClientRect(),
+                            })
+                          }
+                        }}
+                        onBlur={() => setCaseHover(null)}
+                        tabIndex={rows.length > 0 ? 0 : undefined}
+                      >
+                        <span className="cursor-default font-mono text-xs text-oj-fg">
+                          {testSummary(submission.judge_result)}
+                        </span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-oj-fg-muted font-mono whitespace-nowrap">
                       {formatDate(submission.submitted_at)}
                     </td>
@@ -221,6 +291,7 @@ export default function SubmissionsPage() {
               })}
             </tbody>
           </table>
+          {caseHover && <TestCaseHoverCard rows={caseHover.rows} anchor={caseHover.anchor} />}
         </div>
       )}
     </div>
@@ -233,5 +304,40 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
       <div className="text-xs text-oj-fg-muted font-mono">{label}</div>
       <div className="mt-0.5 truncate text-sm text-oj-fg font-mono">{value}</div>
     </div>
+  )
+}
+
+function TestCaseHoverCard({ rows, anchor }: { rows: JudgeCaseResult[]; anchor: DOMRect }) {
+  if (typeof document === 'undefined') return null
+
+  const width = 256
+  const gap = 8
+  const estimatedHeight = 280
+  const left = Math.min(Math.max(anchor.left, gap), window.innerWidth - width - gap)
+  const opensUp = window.innerHeight - anchor.bottom < estimatedHeight && anchor.top > estimatedHeight
+  const position = opensUp
+    ? { left, bottom: window.innerHeight - anchor.top + gap }
+    : { left, top: anchor.bottom + gap }
+
+  return createPortal(
+    <div
+      className="fixed z-[1000] w-64 rounded-md border border-oj-border bg-white p-3 text-xs
+                 text-oj-fg shadow-xl"
+      style={position}
+    >
+      <div className="mb-2 font-semibold text-oj-fg">Test cases</div>
+      <div className="max-h-56 space-y-1 overflow-auto">
+        {rows.map((result) => (
+          <div
+            key={result.index}
+            className="grid grid-cols-[3rem_minmax(0,1fr)] gap-2 rounded bg-oj-bg px-2 py-1"
+          >
+            <span className="font-mono text-oj-fg-muted">#{result.index}</span>
+            <span className="font-medium text-oj-fg">{result.verdict}</span>
+          </div>
+        ))}
+      </div>
+    </div>,
+    document.body,
   )
 }
