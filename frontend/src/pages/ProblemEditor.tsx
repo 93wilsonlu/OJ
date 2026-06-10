@@ -20,7 +20,7 @@ const LANGUAGE_OPTIONS: Record<string, { label: string; monaco: string; starter:
   cpp17: {
     label: 'C++17',
     monaco: 'cpp',
-    starter: '# Write your solution here\n',
+    starter: '// Write your solution here\n',
   },
 }
 

@@ -252,15 +252,40 @@ def main() -> None:
     heartbeat.start()
 
     def on_judge(message: pubsub_v1.subscriber.message.Message) -> None:
-        data = json.loads(message.data)
-        decrement_queue_length()
-        judge_submission(data)
-        message.ack()
+        try:
+            data = json.loads(message.data)
+        except Exception as exc:
+            logger.error("on_judge.parse_error", error=str(exc))
+            message.ack()
+            return
+        try:
+            judge_submission(data)
+            message.ack()
+        except Exception as exc:
+            logger.error(
+                "on_judge.handler_error",
+                error=str(exc),
+                traceback=traceback.format_exc(),
+            )
+            message.nack()
 
     def on_run(message: pubsub_v1.subscriber.message.Message) -> None:
-        data = json.loads(message.data)
-        handle_custom_run(data)
-        message.ack()
+        try:
+            data = json.loads(message.data)
+        except Exception as exc:
+            logger.error("on_run.parse_error", error=str(exc))
+            message.ack()
+            return
+        try:
+            handle_custom_run(data)
+            message.ack()
+        except Exception as exc:
+            logger.error(
+                "on_run.handler_error",
+                error=str(exc),
+                traceback=traceback.format_exc(),
+            )
+            message.nack()
 
     fut_judge = subscriber.subscribe(
         settings.PUBSUB_JUDGE_SUBSCRIPTION, on_judge, flow_control=flow
@@ -275,10 +300,17 @@ def main() -> None:
     )
     try:
         fut_judge.result()
+    except Exception as exc:
+        logger.error("judge_subscription_error", error=str(exc))
+        raise
     finally:
         stop_event.set()
         heartbeat.join(timeout=2)
         fut_run.cancel()
+        try:
+            fut_run.result()
+        except Exception as exc:
+            logger.error("run_subscription_error", error=str(exc))
 
 
 async def _run_judge(
