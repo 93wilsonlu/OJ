@@ -1,7 +1,6 @@
 import warnings
 from contextlib import asynccontextmanager
 
-import anyio
 import structlog
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,17 +24,15 @@ if settings.SECRET_KEY == "changeme":
         stacklevel=1,
     )
 
+if settings.INTERNAL_TOKEN == "changeme-internal":
+    warnings.warn(
+        "INTERNAL_TOKEN is the default 'changeme-internal' — do not use in production",
+        stacklevel=1,
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # MinIO bucket
-    try:
-        from app.services.storage import ensure_bucket
-        await anyio.to_thread.run_sync(ensure_bucket)
-        log.info("minio.bucket.ready", bucket=settings.MINIO_BUCKET)
-    except Exception as exc:
-        log.warning("minio.bucket.unavailable", error=str(exc))
-
     # Admin seed
     try:
         from app.database import AsyncSessionLocal
