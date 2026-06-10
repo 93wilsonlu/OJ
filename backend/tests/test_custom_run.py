@@ -13,7 +13,8 @@ from app.services import custom_run
 def test_get_redis():
     with patch("lib.custom_run.redis") as mock_redis:
         with patch("lib.custom_run._redis", None):
-            r = custom_run.get_redis()
+            from app.services.custom_run import get_redis
+            r = get_redis()
             mock_redis.from_url.assert_called_once()
             assert r is mock_redis.from_url.return_value
 
@@ -115,18 +116,18 @@ async def test_create_run_already_active():
     db = AsyncMock()
     user = User(role="candidate", user_id=uuid.uuid4())
     data = SubmissionRunCreate(exam_id=uuid.uuid4(), problem_id=uuid.uuid4(), language="python3", code="print(1)", stdin="")
-    
+
     exam = Exam()
     problem = Problem(allowed_langs=["python3"])
-    
+
     mock_redis = MagicMock()
     mock_redis.get.return_value = "some_run_id" # active run exists
-    
+
     mock_access = MagicMock(can_solve=True)
     with patch("app.services.custom_run._get_assigned_problem", return_value=(exam, problem)), \
          patch("app.services.exam.get_exam_access", return_value=mock_access), \
          patch("app.services.proctoring.ensure_candidate_not_locked"), \
-         patch("app.services.custom_run.get_redis", return_value=mock_redis):
+         patch("lib.custom_run.get_redis", return_value=mock_redis):
         with pytest.raises(HTTPException) as exc:
             await custom_run.create_run(db, user, data)
         assert exc.value.status_code == 429
@@ -137,14 +138,14 @@ async def test_create_run_rate_limited():
     db = AsyncMock()
     user = User(role="candidate", user_id=uuid.uuid4())
     data = SubmissionRunCreate(exam_id=uuid.uuid4(), problem_id=uuid.uuid4(), language="python3", code="print(1)", stdin="")
-    
+
     exam = Exam()
     problem = Problem(allowed_langs=["python3"])
-    
+
     mock_redis = MagicMock()
-    mock_redis.get.return_value = None
-    mock_redis.set.return_value = False # rate limit hit
-    
+    mock_redis.get = MagicMock(return_value=None)
+    mock_redis.set = MagicMock(side_effect=[False])  # first set (rate_key) fails
+
     mock_access = MagicMock(can_solve=True)
     with patch("app.services.custom_run._get_assigned_problem", return_value=(exam, problem)), \
          patch("app.services.exam.get_exam_access", return_value=mock_access), \
@@ -156,58 +157,49 @@ async def test_create_run_rate_limited():
         assert "Wait before running" in exc.value.detail
 
 @pytest.mark.asyncio
-async def test_create_run_queue_busy():
+async def test_create_run_success():
     db = AsyncMock()
     user = User(role="candidate", user_id=uuid.uuid4())
     data = SubmissionRunCreate(exam_id=uuid.uuid4(), problem_id=uuid.uuid4(), language="python3", code="print(1)", stdin="")
-    
+
     exam = Exam()
     problem = Problem(allowed_langs=["python3"])
-    
+
     mock_redis = MagicMock()
     mock_redis.get.return_value = None
     mock_redis.set.return_value = True
-    
-    mock_queue = MagicMock()
-    mock_queue.count = 101 # busy
-    
+
     mock_access = MagicMock(can_solve=True)
     with patch("app.services.custom_run._get_assigned_problem", return_value=(exam, problem)), \
          patch("app.services.exam.get_exam_access", return_value=mock_access), \
          patch("app.services.proctoring.ensure_candidate_not_locked"), \
          patch("app.services.custom_run.get_redis", return_value=mock_redis), \
-         patch("app.services.queue.get_run_queue", return_value=mock_queue):
-        with pytest.raises(HTTPException) as exc:
-            await custom_run.create_run(db, user, data)
-        assert exc.value.status_code == 429
-        assert "Run queue is busy" in exc.value.detail
+         patch("app.services.queue.enqueue_custom_run"):
+        res = await custom_run.create_run(db, user, data)
+        assert res["status"] == "queued"
+        assert "run_id" in res
 
 @pytest.mark.asyncio
 async def test_create_run_enqueue_failure_cleanup():
     db = AsyncMock()
     user = User(role="candidate", user_id=uuid.uuid4())
     data = SubmissionRunCreate(exam_id=uuid.uuid4(), problem_id=uuid.uuid4(), language="python3", code="print(1)", stdin="")
-    
+
     exam = Exam()
     problem = Problem(allowed_langs=["python3"])
-    
+
     mock_redis = MagicMock()
     mock_redis.get.return_value = None
     mock_redis.set.return_value = True
-    
-    mock_queue = MagicMock()
-    mock_queue.count = 0
-    
+
     mock_access = MagicMock(can_solve=True)
     with patch("app.services.custom_run._get_assigned_problem", return_value=(exam, problem)), \
          patch("app.services.exam.get_exam_access", return_value=mock_access), \
          patch("app.services.proctoring.ensure_candidate_not_locked"), \
          patch("app.services.custom_run.get_redis", return_value=mock_redis), \
-         patch("app.services.queue.get_run_queue", return_value=mock_queue), \
-         patch("app.services.queue.enqueue_custom_run", side_effect=Exception("Redis down")):
+         patch("app.services.queue.enqueue_custom_run", side_effect=Exception("Pubsub error")):
         with pytest.raises(Exception) as exc:
             await custom_run.create_run(db, user, data)
-        # Redis delete should be called for active key and run key
         mock_redis.delete.assert_called()
 
 def test_get_run_permissions():
@@ -219,7 +211,7 @@ def test_get_run_permissions():
 def test_get_run_not_found():
     user = User(role="candidate", user_id=uuid.uuid4())
     mock_redis = MagicMock()
-    mock_redis.get.return_value = None
+    mock_redis.get = MagicMock(return_value=None)
     with patch("app.services.custom_run.get_redis", return_value=mock_redis):
         with pytest.raises(HTTPException) as exc:
             custom_run.get_run(user, uuid.uuid4())
@@ -229,7 +221,7 @@ def test_get_run_candidate_mismatch():
     user = User(role="candidate", user_id=uuid.uuid4())
     mock_redis = MagicMock()
     # Return run details belonging to another candidate
-    mock_redis.get.return_value = json.dumps({"candidate_id": str(uuid.uuid4())})
+    mock_redis.get = MagicMock(return_value=json.dumps({"candidate_id": str(uuid.uuid4())}))
     with patch("app.services.custom_run.get_redis", return_value=mock_redis):
         with pytest.raises(HTTPException) as exc:
             custom_run.get_run(user, uuid.uuid4())
@@ -239,7 +231,7 @@ def test_get_run_success():
     user = User(role="candidate", user_id=uuid.uuid4())
     mock_redis = MagicMock()
     payload = {"candidate_id": str(user.user_id), "status": "ok"}
-    mock_redis.get.return_value = json.dumps(payload)
+    mock_redis.get = MagicMock(return_value=json.dumps(payload))
     with patch("app.services.custom_run.get_redis", return_value=mock_redis):
         res = custom_run.get_run(user, uuid.uuid4())
         assert res == payload

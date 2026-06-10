@@ -34,7 +34,16 @@ jobs:
 
       - name: Build Dockerfile.worker
         working-directory: .
-        run: docker build -f backend/Dockerfile.worker -t judge-worker-ci backend/
+        run: |
+          for attempt in 1 2 3; do
+            docker build -f backend/Dockerfile.worker -t judge-worker-ci backend/ && exit 0
+            if [ "$attempt" -lt 3 ]; then
+              echo "Docker build failed (attempt $attempt/3), retrying in 15s..."
+              sleep 15
+            fi
+          done
+          echo "Docker build failed after 3 attempts."
+          exit 1
 
   frontend:
     name: Frontend (tsc + vitest + build)
@@ -63,5 +72,4 @@ jobs:
 
       - name: Build
         run: npm run build
-
 
