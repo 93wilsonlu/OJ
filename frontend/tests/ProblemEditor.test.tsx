@@ -74,7 +74,7 @@ async function enterFullscreen() {
     })
   } else {
     fullscreenElement = document.documentElement
-    fireEvent(document, new Event('fullscreenchange'))
+    document.dispatchEvent(new Event('fullscreenchange'))
   }
   await waitFor(() => expect(screen.getByRole('button', { name: 'Submit' })).not.toBeDisabled())
 }
