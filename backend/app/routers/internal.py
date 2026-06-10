@@ -1,3 +1,4 @@
+import hmac
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -23,7 +24,7 @@ SYSTEM_ERROR_MESSAGE = (
 
 
 def _require_token(x_internal_token: str = Header(default=None)) -> None:
-    if x_internal_token != settings.INTERNAL_TOKEN:
+    if not x_internal_token or not hmac.compare_digest(x_internal_token, settings.INTERNAL_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid or missing internal token")
 
 
