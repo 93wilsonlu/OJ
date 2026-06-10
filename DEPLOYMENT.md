@@ -186,8 +186,9 @@ The workflow uses these GitHub Actions secrets:
 - `GCE_SSH_PRIVATE_KEY_B64`: base64-encoded private key accepted by the VM.
 
 Before the first deployment, create `$HOME/oj/.env` on the VM. The workflow
-preserves that file across deployments, replaces the rest of `$HOME/oj` with the
-checked-out commit that passed CI, and then runs:
+preserves that file and `$HOME/oj/secrets/adc.json` across deployments,
+replaces the rest of `$HOME/oj` with the checked-out commit that passed CI, and
+then runs:
 
 ```bash
 docker compose up -d --build --remove-orphans
