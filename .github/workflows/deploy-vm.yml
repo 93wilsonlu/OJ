@@ -24,9 +24,6 @@ jobs:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Package project
-        env:
-          LC_ALL: C.UTF-8
-          LANG: C.UTF-8
         run: |
           tar \
             --exclude="./frontend/node_modules" \
@@ -52,9 +49,6 @@ jobs:
           ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Upload package to VM
-        env:
-          LC_ALL: C.UTF-8
-          LANG: C.UTF-8
         run: |
           scp -i ~/.ssh/gce_key /tmp/final_deploy.tar.gz \
             ${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}:~/final_deploy.tar.gz
@@ -63,8 +57,6 @@ jobs:
         run: |
           ssh -i ~/.ssh/gce_key ${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }} << 'EOF'
           set -e
-          export LC_ALL=C.UTF-8
-          export LANG=C.UTF-8
 
           APP_DIR="$HOME/oj"
 
@@ -84,12 +76,6 @@ jobs:
           cp "$HOME/oj.env.backup" "$APP_DIR/.env"
 
           cd "$APP_DIR"
-
-          # Verify nginx.conf has correct encoding (no corrupted characters)
-          if grep -q 'ä' nginx/nginx.conf; then
-            echo "ERROR: nginx.conf has corrupted characters (ä found)"
-            exit 1
-          fi
 
           docker compose up -d --build --remove-orphans
           docker compose ps
