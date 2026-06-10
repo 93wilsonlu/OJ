@@ -12,6 +12,7 @@ from app.observability import prometheus_response_body, readiness_report
 from app.routers import admin as admin_router
 from app.routers import auth as auth_router
 from app.routers import exam as exam_router
+from app.routers import internal as internal_router
 from app.routers import problem as problem_router
 from app.routers import submission as submission_router
 
@@ -61,6 +62,7 @@ app.include_router(admin_router.router, prefix="/api/v1")
 app.include_router(problem_router.router, prefix="/api/v1")
 app.include_router(exam_router.router, prefix="/api/v1")
 app.include_router(submission_router.router, prefix="/api/v1")
+app.include_router(internal_router.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/healthz")
