@@ -40,14 +40,14 @@ services:
     command: >
       sh -c "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
     volumes:
-      - ./secrets/adc.json:/var/run/secrets/adc.json:ro
+      - ~/.oj-secrets/adc.json:/var/run/secrets/adc.json:ro
 
   # worker:
   #   build:
   #     context: ./backend
   #     dockerfile: Dockerfile.worker
   #   environment:
-  #     GOOGLE_APPLICATION_CREDENTIALS: /tmp/adc.json
+  #     GOOGLE_APPLICATION_CREDENTIALS: /var/run/secrets/adc.json
   #     GCS_BUCKET: ${GCS_BUCKET}
   #     GCS_PROJECT: ${GCS_PROJECT}
   #     PUBSUB_JUDGE_TOPIC: ${PUBSUB_JUDGE_TOPIC}
@@ -60,7 +60,7 @@ services:
   #     api:
   #       condition: service_started
   #   volumes:
-  #     - ~/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro
+  #     - ~/.oj-secrets/adc.json:/var/run/secrets/adc.json:ro
 
   nginx:
     build:

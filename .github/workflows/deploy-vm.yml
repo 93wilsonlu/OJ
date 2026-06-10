@@ -79,22 +79,12 @@ jobs:
           tar -xzf "$HOME/final_deploy.tar.gz" -C "$APP_DIR"
           cp "$HOME/oj.env.backup" "$APP_DIR/.env"
 
-          # Write GCP credentials
-          mkdir -p "$APP_DIR/secrets"
-          # Some deployments leave adc.json non-writable (e.g. root-owned from prior container writes).
-          # In that case keep the existing file so deploy does not fail.
-          # If service account keys rotate, fix ownership/permissions and refresh this file manually on the VM.
-          if [ -f "$APP_DIR/secrets/adc.json" ] && [ ! -w "$APP_DIR/secrets/adc.json" ]; then
-            echo "Keeping existing non-writable $APP_DIR/secrets/adc.json (assumes existing credentials are valid)"
-          elif [ -w "$APP_DIR/secrets" ]; then
-            cat > "$APP_DIR/secrets/adc.json" << 'CREDS'
+          # Write GCP credentials to home directory (no sudo needed)
+          mkdir -p "$HOME/.oj-secrets"
+          cat > "$HOME/.oj-secrets/adc.json" << 'CREDS'
           ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
           CREDS
-            chmod 600 "$APP_DIR/secrets/adc.json"
-          else
-            echo "ERROR: $APP_DIR/secrets is not writable and adc.json is missing. Fix VM permissions or create the file manually."
-            exit 1
-          fi
+          chmod 600 "$HOME/.oj-secrets/adc.json"
 
           cd "$APP_DIR"
 
