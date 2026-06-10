@@ -17,7 +17,7 @@ from app.models.submission import Submission
 from app.schemas.exam import ExamAssignmentCreate, ExamCreate, ExamUpdate
 from app.services import proctoring as proctoring_service
 
-FULLSCREEN_EXIT_GRACE_SECONDS = 5
+FULLSCREEN_EXIT_GRACE_SECONDS = 3
 
 
 @dataclass
@@ -87,7 +87,7 @@ def _should_force_end_attempt(attempt: ExamAttempt, now: datetime) -> bool:
     return (
         attempt.status == "in_progress"
         and attempt.force_end_at is not None
-        and now > _as_utc(attempt.force_end_at)
+        and now >= _as_utc(attempt.force_end_at)
     )
 
 

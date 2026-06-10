@@ -2,11 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, getErrorMessage } from '../api/errors'
 import { apiGetExamAccess, apiListExamProblems, apiListExams, apiStartExam } from '../api/exams'
-import { apiListSubmissions } from '../api/submissions'
-import VerdictBadge from '../components/VerdictBadge'
 import { useAuth } from '../hooks/useAuth'
 import type { Exam, ExamAccess } from '../types/exam'
-import type { SubmissionListItem } from '../types/submission'
 import { setActiveExamLock } from '../utils/activeExamLock'
 import { formatDate } from '../utils/format'
 
@@ -33,16 +30,6 @@ function examStatus(exam: Exam, now: Date): ExamStatus {
   return 'Active'
 }
 
-function latestSubmissionByExam(submissions: SubmissionListItem[]) {
-  return submissions.reduce<Record<string, SubmissionListItem>>((acc, submission) => {
-    const current = acc[submission.exam_id]
-    if (!current || new Date(submission.submitted_at) > new Date(current.submitted_at)) {
-      acc[submission.exam_id] = submission
-    }
-    return acc
-  }, {})
-}
-
 function isProctoringLockError(error: unknown) {
   return error instanceof ApiError
     && error.status === 403
@@ -57,7 +44,6 @@ export default function CandidateDashboard() {
   const [examAccesses, setExamAccesses] = useState<Record<string, ExamAccess>>({})
   const [problemCounts, setProblemCounts] = useState<Record<string, number>>({})
   const [lockedExams, setLockedExams] = useState<Record<string, boolean>>({})
-  const [latestSubmissions, setLatestSubmissions] = useState<Record<string, SubmissionListItem>>({})
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [now, setNow] = useState(() => new Date())
@@ -89,24 +75,21 @@ export default function CandidateDashboard() {
         const accessMap = Object.fromEntries(
           accessEntries.filter(([, access]) => access !== null),
         ) as Record<string, ExamAccess>
-        const [counts, submissions] = await Promise.all([
-          Promise.all(
-            data.map(async (exam) => {
-              const access = accessMap[exam.exam_id]
-              if (user?.role === 'candidate' && access && !access.can_view_problems) {
-                return [exam.exam_id, 0, false] as const
-              }
-              try {
-                const problems = await apiListExamProblems(token, exam.exam_id)
-                return [exam.exam_id, problems.length, false] as const
-              } catch (e) {
-                if (isProctoringLockError(e)) return [exam.exam_id, 0, true] as const
-                throw e
-              }
-            }),
-          ),
-          apiListSubmissions(token),
-        ])
+        const counts = await Promise.all(
+          data.map(async (exam) => {
+            const access = accessMap[exam.exam_id]
+            if (user?.role === 'candidate' && access && !access.can_view_problems) {
+              return [exam.exam_id, 0, false] as const
+            }
+            try {
+              const problems = await apiListExamProblems(token, exam.exam_id)
+              return [exam.exam_id, problems.length, false] as const
+            } catch (e) {
+              if (isProctoringLockError(e)) return [exam.exam_id, 0, true] as const
+              throw e
+            }
+          }),
+        )
         if (!cancelled) {
           setExams(data)
           setExamAccesses(accessMap)
@@ -114,7 +97,6 @@ export default function CandidateDashboard() {
           setLockedExams(Object.fromEntries(
             counts.filter(([, , locked]) => locked).map(([examId]) => [examId, true]),
           ))
-          setLatestSubmissions(latestSubmissionByExam(submissions))
         }
       } catch (e) {
         if (!cancelled) setError(getErrorMessage(e, 'Failed to load exams'))
@@ -279,7 +261,6 @@ export default function CandidateDashboard() {
                 <th className="px-4 py-3 text-right font-semibold">Problems</th>
                 <th className="px-4 py-3 text-left font-semibold">Start Time</th>
                 <th className="px-4 py-3 text-left font-semibold">End Time</th>
-                <th className="px-4 py-3 text-left font-semibold">Last Submission</th>
                 <th className="px-4 py-3 text-right font-semibold">Action</th>
               </tr>
             </thead>
@@ -287,9 +268,7 @@ export default function CandidateDashboard() {
               {visibleExams.map((exam) => {
                 const status = examStatus(exam, now)
                 const access = examAccesses[exam.exam_id]
-                const latest = latestSubmissions[exam.exam_id]
-                const latestVerdict = latest?.judge_result?.verdict ?? latest?.status
-                const locked = lockedExams[exam.exam_id]
+                const locked = lockedExams[exam.exam_id] || access?.status_label === 'force_ended'
                 const actionLabel = access?.can_start
                   ? 'Start'
                   : access?.status_label === 'in_progress'
@@ -348,18 +327,6 @@ export default function CandidateDashboard() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-oj-fg-muted">
                       {formatDate(exam.end_time)}
-                    </td>
-                    <td className="min-w-[150px] px-4 py-3">
-                      {latest ? (
-                        <div className="flex flex-col items-start gap-1">
-                          <VerdictBadge verdict={latestVerdict} />
-                          <span className="font-mono text-xs text-oj-fg-muted">
-                            {formatDate(latest.submitted_at)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="font-mono text-oj-fg-muted">-</span>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {isInterviewer ? (

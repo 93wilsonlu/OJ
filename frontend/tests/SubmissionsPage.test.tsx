@@ -25,6 +25,12 @@ function makeSubmission(overrides: Partial<SubmissionListItem> = {}): Submission
       execution_time: 12,
       memory_usage: 2048,
       error_message: null,
+      case_results: [
+        { index: 1, verdict: 'Accepted', execution_time: 5, memory_usage: 1024 },
+        { index: 2, verdict: 'Accepted', execution_time: 7, memory_usage: 2048 },
+        { index: 3, verdict: 'Accepted', execution_time: 6, memory_usage: 1536 },
+        { index: 4, verdict: 'Accepted', execution_time: 8, memory_usage: 2048 },
+      ],
       judged_at: new Date('2026-05-28T08:01:00Z').toISOString(),
     },
     exam_title: 'Backend Interview',
@@ -87,6 +93,9 @@ describe('SubmissionsPage', () => {
     await screen.findByText('Two Sum')
     expect(screen.getByText('Total')).toBeInTheDocument()
     expect(screen.getAllByText('Accepted').length).toBeGreaterThan(0)
+    expect(screen.getByText('All Accepted (4/4)')).toBeInTheDocument()
+    fireEvent.mouseEnter(screen.getByText('All Accepted (4/4)').parentElement!)
+    expect(screen.getByText('#1')).toBeInTheDocument()
     expect(screen.getByText('Graph Walk')).toBeInTheDocument()
 
     fireEvent.change(screen.getByPlaceholderText('Search problem, exam, submission...'), {
@@ -117,6 +126,10 @@ describe('SubmissionsPage', () => {
     await screen.findByText('Two Sum')
 
     expect(submissionsApi.apiListSubmissions).toHaveBeenCalledWith('token', { exam_id: 'exam-1' })
+    expect(screen.getByRole('link', { name: 'Back to exam' })).toHaveAttribute(
+      'href',
+      '/exams/exam-1',
+    )
     expect(screen.getAllByRole('link', { name: 'View' })[0]).toHaveAttribute(
       'href',
       '/exams/exam-1/submissions/submission-1',

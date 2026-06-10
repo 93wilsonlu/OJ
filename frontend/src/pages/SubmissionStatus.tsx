@@ -76,6 +76,17 @@ export default function SubmissionStatus() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
+      {examId && (
+        <div className="mb-5">
+          <Link
+            to={`/exams/${examId}`}
+            className="rounded-md border border-oj-border bg-white px-3 py-1.5 text-xs font-semibold text-oj-fg
+                       hover:border-oj-accent hover:text-oj-accent"
+          >
+            Back to exam
+          </Link>
+        </div>
+      )}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-oj-fg">Submission</h1>

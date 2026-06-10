@@ -126,7 +126,7 @@ export default function App() {
           <Route
             path="/submissions"
             element={
-              <Protected roles={['candidate', 'interviewer', 'problem_admin', 'admin']}>
+              <Protected roles={['candidate', 'interviewer', 'admin']}>
                 <SubmissionsPage />
               </Protected>
             }
@@ -134,7 +134,7 @@ export default function App() {
           <Route
             path="/submissions/:submissionId"
             element={
-              <Protected roles={['candidate', 'interviewer', 'problem_admin', 'admin']}>
+              <Protected roles={['candidate', 'interviewer', 'admin']}>
                 <SubmissionStatus />
               </Protected>
             }

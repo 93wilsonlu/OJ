@@ -209,6 +209,7 @@ describe('ProblemDetailPage - Phase 2: Form & File Interactions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add Test Case' }));
     expect(screen.getByRole('heading', { name: 'Add Test Case' })).toBeInTheDocument();
+    expect(screen.getAllByText('No file selected')).toHaveLength(2);
 
     const inFile = new File(['1 2'], 'input.txt', { type: 'text/plain' });
     const outFile = new File(['3'], 'output.txt', { type: 'text/plain' });
@@ -226,6 +227,8 @@ describe('ProblemDetailPage - Phase 2: Form & File Interactions', () => {
 
     expect((inputFileInput as HTMLInputElement).files?.[0]?.name).toBe('input.txt');
     expect((expectedFileInput as HTMLInputElement).files?.[0]?.name).toBe('output.txt');
+    expect(screen.getByText('input.txt')).toBeInTheDocument();
+    expect(screen.getByText('output.txt')).toBeInTheDocument();
 
     await user.clear(weightInput);
     await user.type(weightInput, '2.5');

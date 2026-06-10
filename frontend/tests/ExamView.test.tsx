@@ -130,6 +130,7 @@ describe('ExamView', () => {
     expect(screen.getByText('Two Sum')).toBeInTheDocument()
     expect(screen.getByText('python3, cpp17')).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Solve' })).toHaveLength(2)
+    expect(screen.queryByRole('link', { name: 'Back to exams' })).not.toBeInTheDocument()
   })
 
   test('blocks candidate problem actions before exam start', async () => {

@@ -225,6 +225,8 @@ async def test_get_exam_results_uses_best_score_per_problem():
     assignment = _make_assignment(exam.exam_id, candidate.user_id, problem.problem_id)
     low_submission = _make_submission(candidate.user_id, exam.exam_id, problem.problem_id)
     high_submission = _make_submission(candidate.user_id, exam.exam_id, problem.problem_id)
+    low_submission.submitted_at = datetime.now(UTC) - timedelta(minutes=2)
+    high_submission.submitted_at = datetime.now(UTC) - timedelta(minutes=1)
     low_result = _make_judge_result(low_submission, 40, "Wrong Answer")
     high_result = _make_judge_result(high_submission, 100, "Accepted")
 
@@ -245,8 +247,43 @@ async def test_get_exam_results_uses_best_score_per_problem():
     assert results.candidates[0].problems[0].best_score == 100
     assert results.candidates[0].problems[0].submission_count == 2
     assert results.candidates[0].problems[0].latest_verdict == "Accepted"
+    assert results.candidates[0].problems[0].display_submission_id == high_submission.submission_id
+    assert results.candidates[0].problems[0].display_submission_language == "python3"
+    assert results.candidates[0].problems[0].display_submission_verdict == "Accepted"
     assert results.candidates[0].is_active is True
     assert results.candidates[0].proctoring_status is None
+
+
+@pytest.mark.asyncio
+async def test_get_exam_results_displays_latest_submission_when_no_accepted_result():
+    interviewer = _make_user("interviewer")
+    candidate = _make_user("candidate")
+    exam = _make_exam()
+    problem = _make_problem()
+    assignment = _make_assignment(exam.exam_id, candidate.user_id, problem.problem_id)
+    older_submission = _make_submission(candidate.user_id, exam.exam_id, problem.problem_id)
+    latest_submission = _make_submission(candidate.user_id, exam.exam_id, problem.problem_id)
+    older_submission.submitted_at = datetime.now(UTC) - timedelta(minutes=2)
+    latest_submission.submitted_at = datetime.now(UTC) - timedelta(minutes=1)
+    older_result = _make_judge_result(older_submission, 20, "Wrong Answer")
+    latest_result = _make_judge_result(latest_submission, 30, "Compile Error")
+
+    rows = MagicMock()
+    rows.all.return_value = [
+        (assignment, candidate, problem, latest_submission, latest_result, None),
+        (assignment, candidate, problem, older_submission, older_result, None),
+    ]
+    db = _mock_db()
+    db.get = AsyncMock(return_value=exam)
+    db.execute = AsyncMock(return_value=rows)
+
+    results = await get_exam_results(db, interviewer, exam.exam_id)
+
+    problem_result = results.candidates[0].problems[0]
+    assert problem_result.best_score == 30
+    assert problem_result.latest_verdict == "Compile Error"
+    assert problem_result.display_submission_id == latest_submission.submission_id
+    assert problem_result.display_submission_verdict == "Compile Error"
 
 
 @pytest.mark.asyncio

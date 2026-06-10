@@ -34,7 +34,7 @@ async def test_run_judge_testcase_load_failure_returns_generic_message(
         memory_limit_override=None,
     )
 
-    verdict, score, _t, _m, error_msg, passed, total = await worker._run_judge(
+    verdict, score, _t, _m, error_msg, passed, total, case_results = await worker._run_judge(
         "python3", "code", problem, [tc]
     )
 
@@ -42,6 +42,7 @@ async def test_run_judge_testcase_load_failure_returns_generic_message(
     assert error_msg == worker.SYSTEM_ERROR_MESSAGE
     assert "minio" not in error_msg
     assert "secret" not in error_msg
+    assert case_results == []
 
 
 @pytest.mark.asyncio
@@ -71,7 +72,23 @@ async def test_run_judge_success_passes_box_dir_and_cleans_up(
 
     result = await worker._run_judge("python3", "code", problem, [tc])
 
-    assert result == ("Accepted", 100.0, 0.012, 2, None, 1, 1)
+    assert result == (
+        "Accepted",
+        100.0,
+        0.012,
+        2,
+        None,
+        1,
+        1,
+        [
+            {
+                "index": 1,
+                "verdict": "Accepted",
+                "execution_time": 0.012,
+                "memory_usage": 2048,
+            },
+        ],
+    )
     mock_run_tc.assert_called_once()
     assert mock_run_tc.call_args.args[-1] == box_dir
     mock_cleanup.assert_called_once_with(box_dir)

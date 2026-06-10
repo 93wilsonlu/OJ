@@ -4,11 +4,9 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, vi } from 'vitest'
 import * as examsApi from '../src/api/exams'
 import { ApiError } from '../src/api/errors'
-import * as submissionsApi from '../src/api/submissions'
 import * as useAuthModule from '../src/hooks/useAuth'
 import CandidateDashboard from '../src/pages/CandidateDashboard'
 import type { Exam } from '../src/types/exam'
-import type { SubmissionListItem } from '../src/types/submission'
 
 function isoFromNow(minutes: number) {
   return new Date(Date.now() + minutes * 60_000).toISOString()
@@ -53,34 +51,6 @@ function makeExams(): Exam[] {
       created_at: isoFromNow(-240),
     },
   ]
-}
-
-function makeSubmission(): SubmissionListItem {
-  return {
-    submission_id: 'submission-1',
-    exam_id: 'active-exam',
-    problem_id: 'problem-1',
-    candidate_id: 'candidate-1',
-    language: 'python3',
-    status: 'completed',
-    submitted_at: isoFromNow(-10),
-    judge_result: {
-      result_id: 'result-1',
-      submission_id: 'submission-1',
-      verdict: 'Accepted',
-      score: 100,
-      passed_count: 1,
-      total_count: 1,
-      execution_time: 12,
-      memory_usage: 8,
-      error_message: null,
-      judged_at: isoFromNow(-9),
-    },
-    exam_title: 'Active Algorithms',
-    problem_title: 'Two Sum',
-    candidate_name: 'Candidate',
-    candidate_email: 'candidate@example.com',
-  }
 }
 
 function mockCandidateAuth() {
@@ -146,7 +116,6 @@ beforeEach(() => {
       allowed_langs: ['python3'],
     }))
   })
-  vi.spyOn(submissionsApi, 'apiListSubmissions').mockResolvedValue([makeSubmission()])
 })
 
 describe('CandidateDashboard', () => {
@@ -158,11 +127,10 @@ describe('CandidateDashboard', () => {
     expect(screen.getByRole('columnheader', { name: 'Start Time' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'End Time' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Problems' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'Last Submission' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Last Submission' })).not.toBeInTheDocument()
     expect(screen.getByText('Active Algorithms')).toBeInTheDocument()
     expect(screen.getByText('Future DP')).toBeInTheDocument()
     expect(screen.getByText('Past Graphs')).toBeInTheDocument()
-    expect(screen.getByText('AC')).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Manage' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Results' })).not.toBeInTheDocument()
@@ -318,6 +286,28 @@ describe('CandidateDashboard', () => {
     renderPage()
 
     expect((await screen.findAllByText('Locked')).length).toBeGreaterThan(0)
+  })
+
+  test('displays locked state for force-ended fullscreen exams', async () => {
+    vi.spyOn(examsApi, 'apiGetExamAccess').mockImplementation(async (_token, examId) => ({
+      exam_id: examId,
+      status_label: examId === 'active-exam' ? 'force_ended' : examId === 'ended-exam' ? 'finished' : 'not_started',
+      can_view_exam: true,
+      can_view_problems: examId !== 'upcoming-exam',
+      can_start: false,
+      can_solve: false,
+      can_submit: false,
+      can_edit_submission: false,
+      can_view_submissions: true,
+      requires_fullscreen: false,
+      attempt_started_at: examId === 'active-exam' ? new Date().toISOString() : null,
+      attempt_deadline_at: null,
+      attempt_ended_at: examId === 'active-exam' ? new Date().toISOString() : null,
+    }))
+
+    renderPage()
+
+    expect(await screen.findByText('Locked')).toBeInTheDocument()
   })
 
   test('displays error banner if loading exams fails', async () => {

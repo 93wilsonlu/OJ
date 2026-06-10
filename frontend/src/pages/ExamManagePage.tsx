@@ -42,7 +42,7 @@ const EMPTY_FORM: FormData = {
 function toLocalDatetime(iso: string): string {
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 function toIsoDatetime(local: string): string {
@@ -262,12 +262,6 @@ export default function ExamManagePage() {
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between gap-4 mb-8">
         <div>
-          <button
-            onClick={() => navigate('/exams')}
-            className="text-xs text-oj-accent hover:underline block mb-1"
-          >
-            Back to exams
-          </button>
           <h1 className="text-xl font-semibold text-oj-fg">
             {isNew ? 'New Exam' : `Edit: ${exam?.title ?? ''}`}
           </h1>
@@ -325,6 +319,7 @@ export default function ExamManagePage() {
             <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Start time *</span>
             <input
               type="datetime-local"
+              step={1}
               value={form.start_time}
               onChange={(event) => setForm((current) => ({ ...current, start_time: event.target.value }))}
               className={inputCls}
@@ -334,6 +329,7 @@ export default function ExamManagePage() {
             <span className="text-xs text-oj-fg-muted font-mono mb-1 block">End time *</span>
             <input
               type="datetime-local"
+              step={1}
               value={form.end_time}
               onChange={(event) => setForm((current) => ({ ...current, end_time: event.target.value }))}
               className={inputCls}
@@ -394,18 +390,18 @@ export default function ExamManagePage() {
               <button onClick={clearAllProblems} className="text-oj-fg-muted hover:underline">Clear</button>
             </div>
           </div>
-          <div className="flex gap-2 mb-2">
+          <div className="flex flex-col gap-2 mb-2 xl:flex-row">
             <input
               type="text"
               placeholder="Search problems..."
               value={problemSearch}
               onChange={(event) => setProblemSearch(event.target.value)}
-              className={`${inputCls} py-1 text-xs flex-1`}
+              className={`${inputCls} py-1 text-xs`}
             />
             <select
               value={problemDifficulty}
               onChange={(event) => setProblemDifficulty(event.target.value)}
-              className={`${inputCls} py-1 text-xs w-[72px]`}
+              className={`${inputCls} py-1 text-xs xl:w-28`}
             >
               <option value="all">All</option>
               <option value="easy">Easy</option>
@@ -484,6 +480,15 @@ export default function ExamManagePage() {
             )}
           </div>
         </section>
+      </div>
+
+      <div className="mt-8 flex justify-end border-t border-oj-border pt-5">
+        <button
+          onClick={() => navigate('/exams')}
+          className="text-xs text-oj-accent hover:underline"
+        >
+          Back to exams
+        </button>
       </div>
     </div>
   )

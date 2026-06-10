@@ -316,7 +316,7 @@ async def test_fullscreen_exit_sets_force_end_deadline():
     updated = await register_fullscreen_exit(db, exam, candidate_id, now)
 
     assert updated.fullscreen_exit_started_at == now
-    assert updated.force_end_at == now + timedelta(seconds=5)
+    assert updated.force_end_at == now + timedelta(seconds=3)
     db.commit.assert_awaited_once()
 
 
@@ -365,6 +365,30 @@ async def test_fullscreen_return_after_grace_force_ends_attempt():
     updated = await register_fullscreen_return(
         db, exam, candidate_id, force_end_at + timedelta(seconds=1)
     )
+
+    assert updated.status == "force_ended"
+    assert updated.ended_at == force_end_at
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fullscreen_return_at_grace_deadline_force_ends_attempt():
+    force_end_at = datetime.now(UTC)
+    candidate_id = uuid.uuid4()
+    exam = _make_exam(anti_cheat_enabled=True, test_time_minutes=30)
+    attempt = _make_attempt(
+        exam.exam_id,
+        candidate_id,
+        deadline_at=force_end_at + timedelta(minutes=10),
+    )
+    attempt.fullscreen_exit_started_at = force_end_at - timedelta(seconds=3)
+    attempt.force_end_at = force_end_at
+    db = _mock_db()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = attempt
+    db.execute = AsyncMock(return_value=result_mock)
+
+    updated = await register_fullscreen_return(db, exam, candidate_id, force_end_at)
 
     assert updated.status == "force_ended"
     assert updated.ended_at == force_end_at

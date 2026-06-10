@@ -31,6 +31,13 @@ class SubmissionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class JudgeCaseResultOut(BaseModel):
+    index: int
+    verdict: str
+    execution_time: int | None = None
+    memory_usage: int | None = None
+
+
 class JudgeResultOut(BaseModel):
     result_id: uuid.UUID
     submission_id: uuid.UUID
@@ -41,6 +48,7 @@ class JudgeResultOut(BaseModel):
     execution_time: int | None
     memory_usage: int | None
     error_message: str | None
+    case_results: list[JudgeCaseResultOut] = Field(default_factory=list)
     judged_at: datetime
 
     model_config = {"from_attributes": True}

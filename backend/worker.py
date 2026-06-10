@@ -9,7 +9,6 @@ import uuid
 from types import SimpleNamespace
 
 import httpx
-import redis
 import structlog
 from google.cloud import pubsub_v1
 
@@ -96,7 +95,11 @@ async def _judge_submission_async(message: dict) -> None:
             {"submission_id": str(submission_id)},
         )
     except Exception as exc:
-        logger.warning("judge.start_webhook.failed", submission_id=str(submission_id), error=str(exc))
+        logger.warning(
+            "judge.start_webhook.failed",
+            submission_id=str(submission_id),
+            error=str(exc),
+        )
 
     problem = SimpleNamespace(**message["problem"])
     test_cases = [SimpleNamespace(**tc) for tc in message["test_cases"]]
@@ -105,9 +108,16 @@ async def _judge_submission_async(message: dict) -> None:
     logger.info("judge.started", submission_id=str(submission_id))
 
     try:
-        verdict, score, exec_time, mem_usage, error_msg, passed, total = await _run_judge(
-            message["language"], code, problem, test_cases
-        )
+        (
+            verdict,
+            score,
+            exec_time,
+            mem_usage,
+            error_msg,
+            passed,
+            total,
+            case_results,
+        ) = await _run_judge(message["language"], code, problem, test_cases)
         submission_status = "completed"
     except Exception as exc:
         logger.error(
@@ -123,6 +133,7 @@ async def _judge_submission_async(message: dict) -> None:
         error_msg = SYSTEM_ERROR_MESSAGE
         passed = 0
         total = len(test_cases)
+        case_results = []
         submission_status = "failed"
 
     duration_seconds = time.perf_counter() - started_at
@@ -142,6 +153,7 @@ async def _judge_submission_async(message: dict) -> None:
                 "execution_time": exec_time,
                 "memory_usage": mem_usage,
                 "error_message": error_msg,
+                "case_results": case_results,
                 "submission_status": submission_status,
             },
         )
@@ -328,7 +340,7 @@ async def _run_custom_judge(
 async def _run_judge(
     lang: str, code: str, problem: SimpleNamespace, test_cases: list
 ) -> tuple:
-    # returns: verdict, score, max_time, max_mem, error_msg, passed_count, total_count
+    # return verdict, score, max_time, max_mem, error_msg, passed_count, total_count, case_results
     box_id = random.randint(0, 999)
     box_dir = ""
     try:
@@ -336,18 +348,36 @@ async def _run_judge(
 
         success, comp_err = compile_code(box_id, lang, code, box_dir)
         if not success:
-            return "Compile Error", 0, 0, 0, comp_err, 0, len(test_cases)
+            return (
+                "Compile Error",
+                0,
+                0,
+                0,
+                comp_err,
+                0,
+                len(test_cases),
+                [
+                    {
+                        "index": index + 1,
+                        "verdict": "Compile Error",
+                        "execution_time": 0,
+                        "memory_usage": 0,
+                    }
+                    for index in range(len(test_cases))
+                ],
+            )
 
         max_time = 0
         max_mem = 0
         passed = 0
         total_score = 0.0
         final_verdict = "Accepted"
+        case_results = []
 
         if not test_cases:
-            return "System Error", 0, 0, 0, "No test cases found for this problem.", 0, 0
+            return "System Error", 0, 0, 0, "No test cases found for this problem.", 0, 0, []
 
-        for tc in test_cases:
+        for index, tc in enumerate(test_cases, start=1):
             try:
                 input_data = storage.get_object_text(tc.input_data_key)
                 expected_output = storage.get_object_text(tc.expected_output_key)
@@ -357,7 +387,16 @@ async def _run_judge(
                     problem_id=str(getattr(problem, "problem_id", "unknown")),
                     error=str(e),
                 )
-                return "System Error", 0, 0, 0, SYSTEM_ERROR_MESSAGE, 0, len(test_cases)
+                return (
+                    "System Error",
+                    0,
+                    0,
+                    0,
+                    SYSTEM_ERROR_MESSAGE,
+                    0,
+                    len(test_cases),
+                    case_results,
+                )
 
             time_limit = (
                 tc.time_limit_override
@@ -372,6 +411,14 @@ async def _run_judge(
 
             verdict, t_used, m_used = run_test_case(
                 box_id, lang, time_limit, mem_limit, input_data, expected_output, box_dir
+            )
+            case_results.append(
+                {
+                    "index": index,
+                    "verdict": verdict,
+                    "execution_time": t_used,
+                    "memory_usage": m_used,
+                }
             )
 
             max_time = max(max_time, t_used)
@@ -392,6 +439,7 @@ async def _run_judge(
             None,
             passed,
             len(test_cases),
+            case_results,
         )
 
     finally:

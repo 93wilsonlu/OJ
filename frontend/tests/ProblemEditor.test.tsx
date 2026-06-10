@@ -66,10 +66,17 @@ function mockFullscreenApis() {
 }
 
 async function enterFullscreen() {
-  fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen' }))
-  await waitFor(() => {
-    expect(examsApi.apiFullscreenReturn).toHaveBeenCalledWith('token', 'exam-1')
-  })
+  const button = screen.queryByRole('button', { name: 'Enter fullscreen' })
+  if (button) {
+    fireEvent.click(button)
+    await waitFor(() => {
+      expect(examsApi.apiFullscreenReturn).toHaveBeenCalledWith('token', 'exam-1')
+    })
+  } else {
+    fullscreenElement = document.documentElement
+    fireEvent(document, new Event('fullscreenchange'))
+  }
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Submit' })).not.toBeDisabled())
 }
 
 function mockAuth() {
@@ -114,6 +121,7 @@ function renderPage(path = '/exams/exam-1/problems/problem-1') {
 beforeEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
+  sessionStorage.clear()
   mockFullscreenApis()
   mockAuth()
   vi.spyOn(examsApi, 'apiListExamProblems').mockResolvedValue([problem])
@@ -148,7 +156,7 @@ beforeEach(() => {
   vi.spyOn(examsApi, 'apiFullscreenExit').mockResolvedValue({
     ...attempt,
     fullscreen_exit_started_at: new Date().toISOString(),
-    force_end_at: new Date(Date.now() + 5000).toISOString(),
+    force_end_at: new Date(Date.now() + 3000).toISOString(),
   })
   vi.spyOn(examsApi, 'apiFullscreenReturn').mockResolvedValue(attempt)
   vi.spyOn(submissionsApi, 'apiCreateSubmission').mockResolvedValue({
@@ -183,7 +191,7 @@ describe('ProblemEditor', () => {
   test('requires fullscreen before candidate can work', async () => {
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'Fullscreen required' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Return to fullscreen' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
   })
@@ -230,6 +238,10 @@ describe('ProblemEditor', () => {
 
     await screen.findByRole('heading', { name: 'Two Sum' })
 
+    expect(screen.getByRole('link', { name: 'Back to exam' })).toHaveAttribute(
+      'href',
+      '/exams/exam-1',
+    )
     expect(screen.getByRole('link', { name: 'Submissions' })).toHaveAttribute(
       'href',
       '/exams/exam-1/submissions',

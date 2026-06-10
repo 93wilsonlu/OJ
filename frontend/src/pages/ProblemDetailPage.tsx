@@ -201,6 +201,47 @@ interface TestCaseFormInitial {
   memoryLimitOverride: number | null
 }
 
+function FileField({
+  label,
+  file,
+  required,
+  onChange,
+}: {
+  label: string
+  file: File | null
+  required: boolean
+  onChange: (file: File | null) => void
+}) {
+  const inputId = `${label.toLowerCase().replace(/\s+/g, '-')}-picker`
+
+  return (
+    <div className="block">
+      <label htmlFor={inputId} className="text-xs text-oj-fg-muted font-mono mb-1 block">
+        {label}
+      </label>
+      <input
+        id={inputId}
+        type="file"
+        required={required}
+        aria-label={label}
+        onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+        className="sr-only"
+      />
+      <div className="flex min-w-0 items-center gap-2">
+        <label
+          htmlFor={inputId}
+          className="shrink-0 cursor-pointer rounded border border-oj-border bg-oj-surface2 px-2 py-1 text-xs font-medium text-oj-fg-muted hover:text-oj-fg"
+        >
+          Choose file
+        </label>
+        <span className="min-w-0 truncate text-sm text-oj-fg-muted">
+          {file?.name ?? 'No file selected'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function TestCaseForm({
   token,
   problemId,
@@ -296,28 +337,18 @@ function TestCaseForm({
       </label>
 
       <div className="grid grid-cols-2 gap-3">
-        <label className="block">
-          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Input file</span>
-          <input
-            type="file"
-            required={!isEdit}
-            onChange={(e) => setInputFile(e.target.files?.[0] ?? null)}
-            className="w-full text-sm text-oj-fg-muted file:mr-2 file:px-2 file:py-1 file:rounded
-                       file:border-0 file:bg-oj-surface2 file:text-oj-fg-muted file:text-xs
-                       file:cursor-pointer cursor-pointer"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs text-oj-fg-muted font-mono mb-1 block">Expected output file</span>
-          <input
-            type="file"
-            required={!isEdit}
-            onChange={(e) => setExpectedFile(e.target.files?.[0] ?? null)}
-            className="w-full text-sm text-oj-fg-muted file:mr-2 file:px-2 file:py-1 file:rounded
-                       file:border-0 file:bg-oj-surface2 file:text-oj-fg-muted file:text-xs
-                       file:cursor-pointer cursor-pointer"
-          />
-        </label>
+        <FileField
+          label="Input file"
+          file={inputFile}
+          required={!isEdit}
+          onChange={setInputFile}
+        />
+        <FileField
+          label="Expected output file"
+          file={expectedFile}
+          required={!isEdit}
+          onChange={setExpectedFile}
+        />
       </div>
 
       <div className="grid grid-cols-4 gap-3 items-end">

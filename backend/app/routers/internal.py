@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,7 @@ class JudgeResultIn(BaseModel):
     execution_time: int   # ms
     memory_usage: int     # MB
     error_message: str | None
+    case_results: list[dict] = Field(default_factory=list)
     submission_status: str  # "completed" or "failed"
 
 
@@ -82,6 +83,7 @@ async def judge_result(
         execution_time=body.execution_time,
         memory_usage=body.memory_usage,
         error_message=body.error_message,
+        case_results=body.case_results,
     )
     db.add(jr)
     submission.status = body.submission_status
@@ -122,6 +124,7 @@ async def mark_stuck(
                     execution_time=0,
                     memory_usage=0,
                     error_message=SYSTEM_ERROR_MESSAGE,
+                    case_results=[],
                 )
             )
         submission.status = "failed"

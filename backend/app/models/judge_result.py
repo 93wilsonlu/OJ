@@ -1,6 +1,16 @@
 import uuid
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,6 +46,7 @@ class JudgeResult(Base):
     execution_time: Mapped[int | None] = mapped_column(Integer)  # ms
     memory_usage: Mapped[int | None] = mapped_column(Integer)  # MB
     error_message: Mapped[str | None] = mapped_column(Text)
+    case_results: Mapped[list[dict] | None] = mapped_column(JSON)
     log_storage_key: Mapped[str | None] = mapped_column(String)
     judged_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

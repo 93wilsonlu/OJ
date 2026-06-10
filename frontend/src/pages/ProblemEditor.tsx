@@ -575,6 +575,15 @@ export default function ProblemEditor() {
               submissionId={submissionData?.submission_id ?? submissionId}
               examId={examId}
             />
+            <div className="mt-4 flex justify-end">
+              <Link
+                to={`/exams/${examId}`}
+                className="rounded-md border border-oj-border bg-oj-surface2 px-3 py-1.5 text-xs font-semibold text-oj-fg
+                           hover:border-oj-accent hover:text-oj-accent"
+              >
+                Back to exam
+              </Link>
+            </div>
           </footer>
         </section>
       </main>

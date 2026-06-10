@@ -41,6 +41,7 @@ def _judge_result_out(
         execution_time=judge_result.execution_time,
         memory_usage=judge_result.memory_usage,
         error_message=judge_result.error_message if not hide_score else None,
+        case_results=[] if hide_score else judge_result.case_results or [],
         judged_at=judge_result.judged_at,
     )
 
@@ -66,6 +67,7 @@ async def list_submissions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_role(current_user, "candidate", "interviewer", "admin")
     submissions = await submission_service.list_submissions(
         db, current_user.user_id, current_user.role, exam_id, candidate_id, candidate
     )
@@ -109,6 +111,7 @@ async def get_submission(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_role(current_user, "candidate", "interviewer", "admin")
     submission, judge_result = await submission_service.get_submission(
         db, submission_id, current_user.user_id, current_user.role
     )
