@@ -16,6 +16,7 @@ from lib.observability import (
     METRIC_JUDGE_DURATION_TOTAL,
     METRIC_JUDGE_FAILURE,
     METRIC_JUDGE_SUCCESS,
+    METRIC_QUEUE_LENGTH,
     METRIC_STUCK_MARKED,
     WORKER_HEARTBEAT_KEY,
     get_redis_client,
@@ -132,10 +133,9 @@ async def refresh_prometheus_metrics() -> None:
     for dependency, check in checks.items():
         READINESS_UP.labels(dependency=dependency).set(1 if check["ok"] else 0)
 
-    QUEUE_LENGTH.set(-1)  # queue depth now tracked via GCP Cloud Monitoring (Pub/Sub)
-
     try:
         client = get_redis_client()
+        QUEUE_LENGTH.set(_redis_float(client, METRIC_QUEUE_LENGTH))
         success = _redis_float(client, METRIC_JUDGE_SUCCESS)
         failure = _redis_float(client, METRIC_JUDGE_FAILURE)
         duration_total = _redis_float(client, METRIC_JUDGE_DURATION_TOTAL)
@@ -146,6 +146,7 @@ async def refresh_prometheus_metrics() -> None:
         WORKER_HEARTBEAT_UNIXTIME.set(_redis_float(client, WORKER_HEARTBEAT_KEY))
         STUCK_SUBMISSIONS_MARKED_TOTAL.set(_redis_float(client, METRIC_STUCK_MARKED))
     except Exception:
+        QUEUE_LENGTH.set(0)
         JUDGE_SUCCESS_TOTAL.set(0)
         JUDGE_FAILURE_TOTAL.set(0)
         JUDGE_AVERAGE_SECONDS.set(0)
