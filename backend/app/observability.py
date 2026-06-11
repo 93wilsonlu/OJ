@@ -67,7 +67,9 @@ async def check_pubsub() -> DependencyStatus:
         from google.cloud import pubsub_v1
         subscriber = pubsub_v1.SubscriberClient()
         await anyio.to_thread.run_sync(
-            lambda: subscriber.get_subscription(request={"subscription": settings.PUBSUB_JUDGE_SUBSCRIPTION})
+            lambda: subscriber.get_subscription(
+                request={"subscription": settings.PUBSUB_JUDGE_SUBSCRIPTION}
+            )
         )
         return DependencyStatus(ok=True, detail="ok")
     except Exception as exc:
@@ -103,7 +105,9 @@ async def readiness_report() -> dict[str, object]:
 async def _get_pubsub_queue_depth() -> int:
     parts = settings.PUBSUB_JUDGE_SUBSCRIPTION.split("/")
     if len(parts) < 4:
-        raise ValueError("PUBSUB_JUDGE_SUBSCRIPTION must be projects/{project}/subscriptions/{name}")
+        raise ValueError(
+            "PUBSUB_JUDGE_SUBSCRIPTION must be projects/{project}/subscriptions/{name}"
+        )
     project_id, subscription_id = parts[1], parts[3]
     now = time.time()
 
@@ -130,6 +134,7 @@ async def _get_pubsub_queue_depth() -> int:
         return total
 
     return await anyio.to_thread.run_sync(_query, abandon_on_cancel=True)
+
 
 async def _load_db_metrics() -> dict[str, float]:
     async with AsyncSessionLocal() as db:
