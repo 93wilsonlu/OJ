@@ -10,6 +10,7 @@ METRIC_JUDGE_FAILURE = "oj:metrics:judge:failure_total"
 METRIC_JUDGE_DURATION_TOTAL = "oj:metrics:judge:duration_total_seconds"
 METRIC_JUDGE_DURATION_COUNT = "oj:metrics:judge:duration_count"
 METRIC_STUCK_MARKED = "oj:metrics:stuck_marked_total"
+METRIC_QUEUE_LENGTH = "oj:metrics:queue:length"
 WORKER_HEARTBEAT_KEY = "oj:worker:last_heartbeat"
 
 _redis: redis.Redis | None = None
@@ -46,5 +47,22 @@ def record_stuck_submissions(count: int) -> None:
         return
     try:
         get_redis_client().incrby(METRIC_STUCK_MARKED, count)
+    except Exception:
+        pass
+
+
+def increment_queue_length() -> None:
+    try:
+        get_redis_client().incr(METRIC_QUEUE_LENGTH)
+    except Exception:
+        pass
+
+
+def decrement_queue_length() -> None:
+    try:
+        client = get_redis_client()
+        value = client.decr(METRIC_QUEUE_LENGTH)
+        if value < 0:
+            client.set(METRIC_QUEUE_LENGTH, 0)
     except Exception:
         pass

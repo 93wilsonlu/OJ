@@ -1,6 +1,8 @@
 import asyncio
 import json
 import random
+import threading
+import time
 import traceback
 import uuid
 from types import SimpleNamespace
@@ -12,6 +14,11 @@ from google.cloud import pubsub_v1
 from lib import storage
 from lib.config import settings
 from lib.logging import configure_logging
+from lib.observability import (
+    decrement_queue_length,
+    record_judge_result,
+    record_worker_heartbeat,
+)
 from lib.services.sandbox import (
     cleanup_box,
     compile_code,
@@ -75,7 +82,9 @@ def handle_custom_run(message: dict) -> None:
 
 
 async def _judge_submission_async(message: dict) -> None:
+    started_at = time.perf_counter()
     submission_id = uuid.UUID(message["submission_id"])
+    test_cases = []
 
     # Best-effort: mark submission as "judging"
     try:
@@ -90,13 +99,12 @@ async def _judge_submission_async(message: dict) -> None:
             error=str(exc),
         )
 
-    problem = SimpleNamespace(**message["problem"])
-    test_cases = [SimpleNamespace(**tc) for tc in message["test_cases"]]
-    code = storage.get_object_text(message["code_storage_key"])
-
     logger.info("judge.started", submission_id=str(submission_id))
 
     try:
+        problem = SimpleNamespace(**message["problem"])
+        test_cases = [SimpleNamespace(**tc) for tc in message["test_cases"]]
+        code = storage.get_object_text(message["code_storage_key"])
         (
             verdict,
             score,
@@ -124,6 +132,11 @@ async def _judge_submission_async(message: dict) -> None:
         total = len(test_cases)
         case_results = []
         submission_status = "failed"
+
+    record_judge_result(
+        success=verdict != "System Error",
+        duration_seconds=time.perf_counter() - started_at,
+    )
 
     try:
         await _post_webhook(
@@ -228,9 +241,19 @@ async def _handle_custom_run_async(message: dict) -> None:
 def main() -> None:
     subscriber = pubsub_v1.SubscriberClient()
     flow = pubsub_v1.types.FlowControl(max_messages=1)
+    stop_event = threading.Event()
+
+    def heartbeat_loop() -> None:
+        while not stop_event.is_set():
+            record_worker_heartbeat()
+            stop_event.wait(settings.WORKER_HEARTBEAT_INTERVAL_SECONDS)
+
+    heartbeat = threading.Thread(target=heartbeat_loop, daemon=True)
+    heartbeat.start()
 
     def on_judge(message: pubsub_v1.subscriber.message.Message) -> None:
         data = json.loads(message.data)
+        decrement_queue_length()
         judge_submission(data)
         message.ack()
 
@@ -253,6 +276,8 @@ def main() -> None:
     try:
         fut_judge.result()
     finally:
+        stop_event.set()
+        heartbeat.join(timeout=2)
         fut_run.cancel()
 
 
