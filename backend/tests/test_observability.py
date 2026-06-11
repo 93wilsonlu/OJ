@@ -71,9 +71,11 @@ async def test_check_storage_failure():
 async def test_readiness_report():
     with patch("app.observability.check_db", return_value=DependencyStatus(ok=True, detail="ok")), \
          patch("app.observability.check_redis", return_value=DependencyStatus(ok=True, detail="ok")), \
-         patch("app.observability.check_storage", return_value=DependencyStatus(ok=True, detail="ok")):
+         patch("app.observability.check_storage", return_value=DependencyStatus(ok=True, detail="ok")), \
+         patch("app.observability.check_pubsub", return_value=DependencyStatus(ok=True, detail="ok")):
         report = await readiness_report()
         assert report["status"] == "ready"
+        assert "pubsub" in report["checks"]
 
 def test_record_worker_heartbeat(mock_redis_connection):
     record_worker_heartbeat()
@@ -98,7 +100,8 @@ def test_record_stuck_submissions(mock_redis_connection):
 @pytest.mark.asyncio
 async def test_refresh_prometheus_metrics(mock_redis_connection):
     mock_redis_connection.get.side_effect = lambda key: b"10.0"
-    with patch("app.observability.readiness_report", return_value={"checks": {"db": {"ok": True}}}):
+    with patch("app.observability.readiness_report", return_value={"checks": {"db": {"ok": True}}}), \
+         patch("app.observability._get_pubsub_queue_depth", return_value=5):
         await refresh_prometheus_metrics()
 
 @pytest.mark.asyncio
@@ -155,6 +158,35 @@ async def test_refresh_prometheus_metrics_redis_exception():
     import lib.observability
     lib.observability._redis = None
     with patch("app.observability.readiness_report", return_value={"checks": {}}), \
+         patch("app.observability._get_pubsub_queue_depth", return_value=0), \
          patch("lib.observability.get_redis_client", side_effect=Exception("Redis broken")):
         await refresh_prometheus_metrics()
+
+
+@pytest.mark.asyncio
+async def test_get_pubsub_queue_depth_returns_count():
+    from app.observability import _get_pubsub_queue_depth
+
+    def _make_ts(value: int) -> MagicMock:
+        point = MagicMock()
+        point.value.int64_value = value
+        ts = MagicMock()
+        ts.points = [point]
+        return ts
+
+    mock_client = MagicMock()
+    mock_client.list_time_series.return_value = [_make_ts(4), _make_ts(3)]
+    with patch("app.observability.monitoring_v3.MetricServiceClient", return_value=mock_client):
+        depth = await _get_pubsub_queue_depth()
+    assert depth == 7
+
+
+@pytest.mark.asyncio
+async def test_get_pubsub_queue_depth_empty_returns_zero():
+    from app.observability import _get_pubsub_queue_depth
+    mock_client = MagicMock()
+    mock_client.list_time_series.return_value = []
+    with patch("app.observability.monitoring_v3.MetricServiceClient", return_value=mock_client):
+        depth = await _get_pubsub_queue_depth()
+    assert depth == 0
 

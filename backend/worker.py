@@ -1,6 +1,7 @@
 import asyncio
 import json
 import random
+import sys
 import threading
 import time
 import traceback
@@ -14,11 +15,7 @@ from google.cloud import pubsub_v1
 from lib import storage
 from lib.config import settings
 from lib.logging import configure_logging
-from lib.observability import (
-    decrement_queue_length,
-    record_judge_result,
-    record_worker_heartbeat,
-)
+from lib.observability import decrement_queue_length, record_judge_result, record_stuck_submissions, record_worker_heartbeat
 from lib.services.sandbox import (
     cleanup_box,
     compile_code,
@@ -84,7 +81,7 @@ def handle_custom_run(message: dict) -> None:
 async def _judge_submission_async(message: dict) -> None:
     started_at = time.perf_counter()
     submission_id = uuid.UUID(message["submission_id"])
-    test_cases = []
+    started_at = time.perf_counter()
 
     # Best-effort: mark submission as "judging"
     try:
@@ -134,7 +131,7 @@ async def _judge_submission_async(message: dict) -> None:
         submission_status = "failed"
 
     record_judge_result(
-        success=verdict != "System Error",
+        success=(submission_status == "completed"),
         duration_seconds=time.perf_counter() - started_at,
     )
 
@@ -238,7 +235,29 @@ async def _handle_custom_run_async(message: dict) -> None:
         logger.error("custom_run.result_webhook.failed", run_id=run_id, error=str(exc))
 
 
+async def mark_stuck_submissions() -> None:
+    url = f"{settings.CALLBACK_URL}/api/v1/internal/mark-stuck"
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, headers={"X-Internal-Token": settings.INTERNAL_TOKEN})
+            resp.raise_for_status()
+        count = resp.json().get("marked", 0)
+        if count:
+            record_stuck_submissions(count)
+    except Exception as exc:
+        logger.warning("worker.mark_stuck.failed", error=str(exc))
+
+
+def _heartbeat_loop(stop_event: threading.Event) -> None:
+    while not stop_event.is_set():
+        record_worker_heartbeat()
+        stop_event.wait(settings.WORKER_HEARTBEAT_INTERVAL_SECONDS)
+
+
 def main() -> None:
+    stop_event = threading.Event()
+    heartbeat = threading.Thread(target=_heartbeat_loop, args=(stop_event,), daemon=True)
+    heartbeat.start()
     subscriber = pubsub_v1.SubscriberClient()
     flow = pubsub_v1.types.FlowControl(max_messages=1)
     stop_event = threading.Event()
@@ -305,7 +324,6 @@ def main() -> None:
         raise
     finally:
         stop_event.set()
-        heartbeat.join(timeout=2)
         fut_run.cancel()
         try:
             fut_run.result()
@@ -424,4 +442,7 @@ async def _run_judge(
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "monitor-once":
+        asyncio.run(mark_stuck_submissions())
+    else:
+        main()

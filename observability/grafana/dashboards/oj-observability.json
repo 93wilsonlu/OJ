@@ -222,7 +222,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -246,15 +246,15 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(oj_judge_success_total[5m]))",
-          "legendFormat": "success rate"
+          "expr": "delta(oj_judge_success_total[5m])",
+          "legendFormat": "success (5m)"
         },
         {
-          "expr": "sum(rate(oj_judge_failure_total[5m]))",
-          "legendFormat": "failure rate"
+          "expr": "delta(oj_judge_failure_total[5m])",
+          "legendFormat": "failure (5m)"
         }
       ],
-      "title": "Judge Throughput",
+      "title": "Judge Throughput (5m window)",
       "type": "timeseries"
     }
   ],

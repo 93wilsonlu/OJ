@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 
 import anyio
 import redis
+from google.cloud import monitoring_v3
 from prometheus_client import Gauge, generate_latest
 from sqlalchemy import text
 
@@ -105,18 +107,49 @@ async def _check_with_timeout(check) -> DependencyStatus:
 
 
 async def readiness_report() -> dict[str, object]:
-    db, redis_status, storage_status = await asyncio.gather(
+    db, redis_status, storage_status, pubsub_status = await asyncio.gather(
         _check_with_timeout(check_db),
         _check_with_timeout(check_redis),
         _check_with_timeout(check_storage),
+        _check_with_timeout(check_pubsub),
     )
-    checks = {"db": db, "redis": redis_status, "storage": storage_status}
+    checks = {"db": db, "redis": redis_status, "storage": storage_status, "pubsub": pubsub_status}
     return {
         "status": "ready" if all(check.ok for check in checks.values()) else "not_ready",
         "checks": {
             name: {"ok": check.ok, "detail": check.detail} for name, check in checks.items()
         },
     }
+
+
+async def _get_pubsub_queue_depth() -> int:
+    parts = settings.PUBSUB_JUDGE_SUBSCRIPTION.split("/")
+    project_id, subscription_id = parts[1], parts[3]
+    now = time.time()
+
+    def _query() -> int:
+        client = monitoring_v3.MetricServiceClient()
+        results = client.list_time_series(
+            request={
+                "name": f"projects/{project_id}",
+                "filter": (
+                    'metric.type = "pubsub.googleapis.com/subscription/num_unacked_messages_by_region"'
+                    f' AND resource.labels.subscription_id = "{subscription_id}"'
+                ),
+                "interval": monitoring_v3.TimeInterval(
+                    end_time={"seconds": int(now), "nanos": 0},
+                    start_time={"seconds": int(now - 120), "nanos": 0},
+                ),
+                "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+            }
+        )
+        total = 0
+        for ts in results:
+            if ts.points:
+                total += int(ts.points[0].value.int64_value)
+        return total
+
+    return await anyio.to_thread.run_sync(_query, abandon_on_cancel=True)
 
 
 
@@ -132,6 +165,11 @@ async def refresh_prometheus_metrics() -> None:
     checks = (await readiness_report())["checks"]
     for dependency, check in checks.items():
         READINESS_UP.labels(dependency=dependency).set(1 if check["ok"] else 0)
+
+    try:
+        QUEUE_LENGTH.set(await _get_pubsub_queue_depth())
+    except Exception:
+        QUEUE_LENGTH.set(-1)
 
     try:
         client = get_redis_client()
