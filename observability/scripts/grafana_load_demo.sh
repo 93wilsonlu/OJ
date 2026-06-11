@@ -5,7 +5,7 @@ set -euo pipefail
 # This script only performs demo actions and prints what step is running.
 # It does NOT print Prometheus metric values; watch Grafana for metric changes.
 
-API_BASE="${API_BASE:-http://localhost/api/v1}"
+API_BASE="${API_BASE:-http://localhost:8080/api/v1}"
 RESET_DEMO="${RESET_DEMO:-0}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-0.5}"
 SCRAPE_WAIT_SECONDS="${SCRAPE_WAIT_SECONDS:-3}"
@@ -95,9 +95,8 @@ seed_demo_data() {
 }
 
 reset_demo_state() {
-  echo "[setup] reset demo submissions, judge results, Redis queue, and demo metrics"
+  echo "[setup] reset demo submissions and judge results"
   docker compose exec -T postgres psql -U oj -d oj -c 'DELETE FROM judge_results; DELETE FROM submissions;' >/dev/null
-  docker compose exec -T redis redis-cli FLUSHDB >/dev/null
 }
 
 login_candidate() {
@@ -169,12 +168,19 @@ if [[ ! -f docker-compose.yml ]]; then
   exit 1
 fi
 
-echo "[setup] start required services, including judge-worker"
-docker compose up -d --remove-orphans postgres redis minio api nginx judge-worker prometheus grafana >/dev/null
+echo "[setup] start required dashboard/API services"
+docker compose up -d --remove-orphans postgres redis api nginx prometheus grafana >/dev/null
 wait_for_api
 seed_demo_data
 if [[ "$RESET_DEMO" == "1" ]]; then
   reset_demo_state
+fi
+
+if docker compose config --services | grep -qx "worker"; then
+  echo "[setup] start compose worker service"
+  docker compose up -d worker >/dev/null
+else
+  echo "[info] no compose worker service found; make sure the GCP Pub/Sub worker is running elsewhere"
 fi
 
 # Seeded assignments from backend/seed_sample_exam.sql.

@@ -5,7 +5,7 @@ set -euo pipefail
 # This script only performs demo actions and prints what step is running.
 # It does NOT print Prometheus metric values; watch Grafana for metric changes.
 
-API_BASE="${API_BASE:-http://localhost/api/v1}"
+API_BASE="${API_BASE:-http://localhost:8080/api/v1}"
 CANDIDATE_EMAIL="${CANDIDATE_EMAIL:-alice.candidate@example.com}"
 CANDIDATE_PASSWORD="${CANDIDATE_PASSWORD:-Candidate123!}"
 EXAM_ID="${EXAM_ID:-eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee}"
@@ -94,9 +94,8 @@ seed_demo_data() {
 }
 
 reset_demo_state() {
-  echo "[setup] reset demo submissions, judge results, Redis queue, and demo metrics"
+  echo "[setup] reset demo submissions and judge results"
   docker compose exec -T postgres psql -U oj -d oj -c 'DELETE FROM judge_results; DELETE FROM submissions;' >/dev/null
-  docker compose exec -T redis redis-cli FLUSHDB >/dev/null
 }
 
 login_candidate() {
@@ -142,40 +141,45 @@ if [[ ! -f docker-compose.yml ]]; then
   exit 1
 fi
 
-trap 'echo "[cleanup] make sure MinIO is running again"; docker compose up -d minio >/dev/null || true' EXIT
+restore_testcase_key() {
+  docker compose exec -T postgres psql -U oj -d oj -c \
+    "UPDATE test_cases SET input_data_key = regexp_replace(input_data_key, '\\.missing-demo$', '') WHERE input_data_key LIKE '%.missing-demo';" >/dev/null
+}
 
-echo "[setup] start required services except judge-worker"
-docker compose up -d postgres redis minio api nginx prometheus grafana >/dev/null
+trap 'echo "[cleanup] restore demo testcase key"; restore_testcase_key || true' EXIT
+
+echo "[setup] start required dashboard/API services"
+docker compose up -d postgres redis api nginx prometheus grafana >/dev/null
 wait_for_api
 seed_demo_data
 if [[ "$RESET_DEMO" == "1" ]]; then
   reset_demo_state
 fi
 
-echo "[1] stop judge-worker"
-docker compose stop judge-worker >/dev/null || true
+if docker compose config --services | grep -qx "worker"; then
+  echo "[setup] start compose worker service"
+  docker compose up -d worker >/dev/null
+else
+  echo "[info] no compose worker service found; make sure the GCP Pub/Sub worker is running elsewhere"
+fi
+
+echo "[1] make one testcase object key invalid"
+restore_testcase_key
+docker compose exec -T postgres psql -U oj -d oj -c \
+  "UPDATE test_cases SET input_data_key = input_data_key || '.missing-demo' WHERE problem_id = '$PROBLEM_ID' AND is_hidden = false AND input_data_key NOT LIKE '%.missing-demo';" >/dev/null
+echo "      worker will receive a real job, but fail when reading the missing GCS object"
 pause_for_grafana
 
-echo "[2] submit one solution while judge-worker is stopped"
+echo "[2] submit one solution"
 token="$(login_candidate)"
 submit_two_sum "$token"
-echo "      one submission created; queue length should rise in Grafana"
+echo "      worker should consume the job and produce a judge failure"
 pause_for_grafana
 
-echo "[3] stop MinIO"
-docker compose stop minio >/dev/null
-echo "      storage readiness should drop in Grafana"
-pause_for_grafana
-
-echo "[4] restart judge-worker while MinIO is still down"
-docker compose start judge-worker >/dev/null
-echo "      worker should consume the queued job and produce a judge failure"
-pause_for_grafana
-
-echo "[5] restart MinIO"
-docker compose start minio >/dev/null
-echo "      storage readiness should recover in Grafana"
+echo "[3] restore testcase key"
+restore_testcase_key
+echo "      readiness stays healthy; failure counter proves the judge path observed a real failure"
 pause_for_grafana
 
 echo "[done] failure/readiness demo actions completed"
-echo "       Watch: queue length, heartbeat age, storage readiness, judge failure total."
+echo "       Watch: queue length, heartbeat age, readiness, judge failure total."

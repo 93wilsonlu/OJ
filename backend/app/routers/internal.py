@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.judge_result import JudgeResult
 from app.models.submission import Submission
+from app.models.worker_heartbeat import WorkerHeartbeat
 from lib.custom_run import RUN_RESULT_TTL_SECONDS, _active_key, _run_key, get_redis
 
 logger = structlog.get_logger(__name__)
@@ -38,6 +39,7 @@ class JudgeResultIn(BaseModel):
     total_count: int
     execution_time: int   # ms
     memory_usage: int     # MB
+    judge_duration_ms: int | None = None
     error_message: str | None
     case_results: list[dict] = Field(default_factory=list)
     submission_status: str  # "completed" or "failed"
@@ -57,6 +59,10 @@ class RunResultIn(BaseModel):
     stdout_truncated: bool = False
     stderr_truncated: bool = False
     error_message: str | None = None
+
+
+class WorkerHeartbeatIn(BaseModel):
+    worker_id: str = "default"
 
 
 @router.post("/judge-start", status_code=204)
@@ -95,6 +101,7 @@ async def judge_result(
         passed_count=body.passed_count,
         total_count=body.total_count,
         execution_time=body.execution_time,
+        judge_duration_ms=body.judge_duration_ms,
         memory_usage=body.memory_usage,
         error_message=body.error_message,
         case_results=body.case_results,
@@ -107,6 +114,21 @@ async def judge_result(
         submission_id=str(body.submission_id),
         verdict=body.verdict,
     )
+
+
+@router.post("/worker-heartbeat", status_code=204)
+async def worker_heartbeat(
+    body: WorkerHeartbeatIn,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_require_token),
+) -> None:
+    heartbeat = await db.get(WorkerHeartbeat, body.worker_id)
+    if heartbeat is None:
+        db.add(WorkerHeartbeat(worker_id=body.worker_id))
+    else:
+        heartbeat.last_seen_at = datetime.now(UTC)
+    await db.commit()
+    logger.debug("internal.worker_heartbeat.stored", worker_id=body.worker_id)
 
 
 @router.post("/run-result", status_code=204)
@@ -167,9 +189,11 @@ async def mark_stuck(
                     passed_count=0,
                     total_count=0,
                     execution_time=0,
+                    judge_duration_ms=None,
                     memory_usage=0,
                     error_message=SYSTEM_ERROR_MESSAGE,
                     case_results=[],
+                    stuck_marked=True,
                 )
             )
         submission.status = "failed"

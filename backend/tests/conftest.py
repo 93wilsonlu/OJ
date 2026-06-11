@@ -15,13 +15,9 @@ async def client():
 @pytest.fixture(autouse=True)
 def mock_redis_connection():
     # Mock redis.from_url to prevent actual connections
-    with patch("lib.custom_run.redis.from_url") as mock_from_url_cr, \
-         patch("lib.observability.redis.from_url") as mock_from_url_obs:
+    with patch("lib.custom_run.redis.from_url") as mock_from_url_cr:
         mock_client = MagicMock()
         mock_from_url_cr.return_value = mock_client
-        mock_from_url_obs.return_value = mock_client
         import lib.custom_run
-        import lib.observability
         lib.custom_run._redis = None
-        lib.observability._redis = None
         yield mock_client

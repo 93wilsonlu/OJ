@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     PUBSUB_JUDGE_SUBSCRIPTION: str = "projects/my-project/subscriptions/judge-submissions-sub"
     PUBSUB_RUN_SUBSCRIPTION: str = "projects/my-project/subscriptions/judge-runs-sub"
 
+    WORKER_ID: str = "default"
     WORKER_HEARTBEAT_INTERVAL_SECONDS: int = 15
 
     CALLBACK_URL: str = "http://api:8000"

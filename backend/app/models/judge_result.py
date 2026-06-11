@@ -1,11 +1,12 @@
 import uuid
 
 from sqlalchemy import (
-    JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -44,9 +45,11 @@ class JudgeResult(Base):
     passed_count: Mapped[int] = mapped_column(Integer, nullable=False)
     total_count: Mapped[int] = mapped_column(Integer, nullable=False)
     execution_time: Mapped[int | None] = mapped_column(Integer)  # ms
+    judge_duration_ms: Mapped[int | None] = mapped_column(Integer)
     memory_usage: Mapped[int | None] = mapped_column(Integer)  # MB
     error_message: Mapped[str | None] = mapped_column(Text)
     case_results: Mapped[list[dict] | None] = mapped_column(JSON)
+    stuck_marked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     log_storage_key: Mapped[str | None] = mapped_column(String)
     judged_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

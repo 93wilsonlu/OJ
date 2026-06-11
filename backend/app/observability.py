@@ -5,27 +5,15 @@ import time
 from dataclasses import dataclass
 
 import anyio
-import redis
 from google.cloud import monitoring_v3
 from prometheus_client import Gauge, generate_latest
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
 from app.config import settings
 from app.database import AsyncSessionLocal
+from app.models.judge_result import JudgeResult
+from app.models.worker_heartbeat import WorkerHeartbeat
 from app.services import storage
-from lib.observability import (
-    METRIC_JUDGE_DURATION_COUNT,
-    METRIC_JUDGE_DURATION_TOTAL,
-    METRIC_JUDGE_FAILURE,
-    METRIC_JUDGE_SUCCESS,
-    METRIC_QUEUE_LENGTH,
-    METRIC_STUCK_MARKED,
-    WORKER_HEARTBEAT_KEY,
-    get_redis_client,
-    record_judge_result,
-    record_stuck_submissions,
-    record_worker_heartbeat,
-)
 
 READINESS_CHECK_TIMEOUT_SECONDS = 1.0
 
@@ -57,15 +45,6 @@ async def check_db() -> DependencyStatus:
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
-        return DependencyStatus(ok=True, detail="ok")
-    except Exception as exc:
-        return DependencyStatus(ok=False, detail=str(exc))
-
-
-async def check_redis() -> DependencyStatus:
-    try:
-        client = get_redis_client()
-        await anyio.to_thread.run_sync(client.ping, abandon_on_cancel=True)
         return DependencyStatus(ok=True, detail="ok")
     except Exception as exc:
         return DependencyStatus(ok=False, detail=str(exc))
@@ -107,13 +86,12 @@ async def _check_with_timeout(check) -> DependencyStatus:
 
 
 async def readiness_report() -> dict[str, object]:
-    db, redis_status, storage_status, pubsub_status = await asyncio.gather(
+    db, storage_status, pubsub_status = await asyncio.gather(
         _check_with_timeout(check_db),
-        _check_with_timeout(check_redis),
         _check_with_timeout(check_storage),
         _check_with_timeout(check_pubsub),
     )
-    checks = {"db": db, "redis": redis_status, "storage": storage_status, "pubsub": pubsub_status}
+    checks = {"db": db, "storage": storage_status, "pubsub": pubsub_status}
     return {
         "status": "ready" if all(check.ok for check in checks.values()) else "not_ready",
         "checks": {
@@ -124,6 +102,8 @@ async def readiness_report() -> dict[str, object]:
 
 async def _get_pubsub_queue_depth() -> int:
     parts = settings.PUBSUB_JUDGE_SUBSCRIPTION.split("/")
+    if len(parts) < 4:
+        raise ValueError("PUBSUB_JUDGE_SUBSCRIPTION must be projects/{project}/subscriptions/{name}")
     project_id, subscription_id = parts[1], parts[3]
     now = time.time()
 
@@ -133,7 +113,7 @@ async def _get_pubsub_queue_depth() -> int:
             request={
                 "name": f"projects/{project_id}",
                 "filter": (
-                    'metric.type = "pubsub.googleapis.com/subscription/num_unacked_messages_by_region"'
+                    'metric.type = "pubsub.googleapis.com/subscription/num_undelivered_messages"'
                     f' AND resource.labels.subscription_id = "{subscription_id}"'
                 ),
                 "interval": monitoring_v3.TimeInterval(
@@ -151,14 +131,38 @@ async def _get_pubsub_queue_depth() -> int:
 
     return await anyio.to_thread.run_sync(_query, abandon_on_cancel=True)
 
+async def _load_db_metrics() -> dict[str, float]:
+    async with AsyncSessionLocal() as db:
+        success = await db.scalar(
+            select(func.count()).select_from(JudgeResult).where(
+                JudgeResult.verdict != "System Error"
+            )
+        )
+        failure = await db.scalar(
+            select(func.count()).select_from(JudgeResult).where(
+                JudgeResult.verdict == "System Error"
+            )
+        )
+        avg_duration_ms = await db.scalar(
+            select(func.avg(JudgeResult.judge_duration_ms)).where(
+                JudgeResult.judge_duration_ms.is_not(None)
+            )
+        )
+        stuck_marked = await db.scalar(
+            select(func.count()).select_from(JudgeResult).where(
+                JudgeResult.stuck_marked.is_(True)
+            )
+        )
+        heartbeat = await db.scalar(select(func.max(WorkerHeartbeat.last_seen_at)))
 
-
-
-def _redis_float(client: redis.Redis, key: str, default: float = 0.0) -> float:
-    value = client.get(key)
-    if value is None:
-        return default
-    return float(value)
+    heartbeat_ts = heartbeat.timestamp() if heartbeat is not None else 0.0
+    return {
+        "success": float(success or 0),
+        "failure": float(failure or 0),
+        "avg_seconds": float(avg_duration_ms or 0) / 1000.0,
+        "stuck_marked": float(stuck_marked or 0),
+        "heartbeat": heartbeat_ts,
+    }
 
 
 async def refresh_prometheus_metrics() -> None:
@@ -172,19 +176,13 @@ async def refresh_prometheus_metrics() -> None:
         QUEUE_LENGTH.set(-1)
 
     try:
-        client = get_redis_client()
-        QUEUE_LENGTH.set(_redis_float(client, METRIC_QUEUE_LENGTH))
-        success = _redis_float(client, METRIC_JUDGE_SUCCESS)
-        failure = _redis_float(client, METRIC_JUDGE_FAILURE)
-        duration_total = _redis_float(client, METRIC_JUDGE_DURATION_TOTAL)
-        duration_count = _redis_float(client, METRIC_JUDGE_DURATION_COUNT)
-        JUDGE_SUCCESS_TOTAL.set(success)
-        JUDGE_FAILURE_TOTAL.set(failure)
-        JUDGE_AVERAGE_SECONDS.set(duration_total / duration_count if duration_count else 0)
-        WORKER_HEARTBEAT_UNIXTIME.set(_redis_float(client, WORKER_HEARTBEAT_KEY))
-        STUCK_SUBMISSIONS_MARKED_TOTAL.set(_redis_float(client, METRIC_STUCK_MARKED))
+        db_metrics = await _load_db_metrics()
+        JUDGE_SUCCESS_TOTAL.set(db_metrics["success"])
+        JUDGE_FAILURE_TOTAL.set(db_metrics["failure"])
+        JUDGE_AVERAGE_SECONDS.set(db_metrics["avg_seconds"])
+        WORKER_HEARTBEAT_UNIXTIME.set(db_metrics["heartbeat"])
+        STUCK_SUBMISSIONS_MARKED_TOTAL.set(db_metrics["stuck_marked"])
     except Exception:
-        QUEUE_LENGTH.set(0)
         JUDGE_SUCCESS_TOTAL.set(0)
         JUDGE_FAILURE_TOTAL.set(0)
         JUDGE_AVERAGE_SECONDS.set(0)

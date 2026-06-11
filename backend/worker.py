@@ -15,7 +15,6 @@ from google.cloud import pubsub_v1
 from lib import storage
 from lib.config import settings
 from lib.logging import configure_logging
-from lib.observability import decrement_queue_length, record_judge_result, record_stuck_submissions, record_worker_heartbeat
 from lib.services.sandbox import (
     cleanup_box,
     compile_code,
@@ -81,7 +80,7 @@ def handle_custom_run(message: dict) -> None:
 async def _judge_submission_async(message: dict) -> None:
     started_at = time.perf_counter()
     submission_id = uuid.UUID(message["submission_id"])
-    started_at = time.perf_counter()
+    test_cases = []
 
     # Best-effort: mark submission as "judging"
     try:
@@ -130,10 +129,7 @@ async def _judge_submission_async(message: dict) -> None:
         case_results = []
         submission_status = "failed"
 
-    record_judge_result(
-        success=(submission_status == "completed"),
-        duration_seconds=time.perf_counter() - started_at,
-    )
+    judge_duration_ms = int((time.perf_counter() - started_at) * 1000)
 
     try:
         await _post_webhook(
@@ -146,6 +142,7 @@ async def _judge_submission_async(message: dict) -> None:
                 "total_count": total,
                 "execution_time": exec_time,
                 "memory_usage": mem_usage,
+                "judge_duration_ms": judge_duration_ms,
                 "error_message": error_msg,
                 "case_results": case_results,
                 "submission_status": submission_status,
@@ -242,15 +239,26 @@ async def mark_stuck_submissions() -> None:
             resp = await client.post(url, headers={"X-Internal-Token": settings.INTERNAL_TOKEN})
             resp.raise_for_status()
         count = resp.json().get("marked", 0)
-        if count:
-            record_stuck_submissions(count)
     except Exception as exc:
         logger.warning("worker.mark_stuck.failed", error=str(exc))
 
 
+def _record_worker_heartbeat() -> None:
+    try:
+        with httpx.Client(timeout=5) as client:
+            response = client.post(
+                f"{settings.CALLBACK_URL}/api/v1/internal/worker-heartbeat",
+                json={"worker_id": settings.WORKER_ID},
+                headers={"X-Internal-Token": settings.INTERNAL_TOKEN},
+            )
+            response.raise_for_status()
+    except Exception as exc:
+        logger.warning("worker.heartbeat.failed", error=str(exc))
+
+
 def _heartbeat_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
-        record_worker_heartbeat()
+        _record_worker_heartbeat()
         stop_event.wait(settings.WORKER_HEARTBEAT_INTERVAL_SECONDS)
 
 
@@ -260,15 +268,6 @@ def main() -> None:
     heartbeat.start()
     subscriber = pubsub_v1.SubscriberClient()
     flow = pubsub_v1.types.FlowControl(max_messages=1)
-    stop_event = threading.Event()
-
-    def heartbeat_loop() -> None:
-        while not stop_event.is_set():
-            record_worker_heartbeat()
-            stop_event.wait(settings.WORKER_HEARTBEAT_INTERVAL_SECONDS)
-
-    heartbeat = threading.Thread(target=heartbeat_loop, daemon=True)
-    heartbeat.start()
 
     def on_judge(message: pubsub_v1.subscriber.message.Message) -> None:
         try:
@@ -324,6 +323,7 @@ def main() -> None:
         raise
     finally:
         stop_event.set()
+        heartbeat.join(timeout=2)
         fut_run.cancel()
         try:
             fut_run.result()

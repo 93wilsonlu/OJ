@@ -22,7 +22,7 @@ async def test_ready_returns_503_when_dependency_fails(client, monkeypatch):
             "status": "not_ready",
             "checks": {
                 "db": {"ok": True, "detail": "ok"},
-                "redis": {"ok": False, "detail": "connection refused"},
+                "pubsub": {"ok": False, "detail": "permission denied"},
                 "storage": {"ok": True, "detail": "ok"},
             },
         }
@@ -32,7 +32,7 @@ async def test_ready_returns_503_when_dependency_fails(client, monkeypatch):
     response = await client.get("/ready")
 
     assert response.status_code == 503
-    assert response.json()["checks"]["redis"]["ok"] is False
+    assert response.json()["checks"]["pubsub"]["ok"] is False
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.submission import Submission
 from app.models.test_case import TestCase
 from app.models.user import User
+from app.models.worker_heartbeat import WorkerHeartbeat
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "ExamCandidateState",
     "Submission",
     "JudgeResult",
+    "WorkerHeartbeat",
 ]

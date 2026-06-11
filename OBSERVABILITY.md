@@ -6,7 +6,8 @@ Prometheus metrics, structured JSON logs, and a pre-provisioned Grafana dashboar
 ## Endpoints
 
 - `GET /health` or `GET /api/v1/health`: process liveness. Returns `{"status":"ok"}`.
-- `GET /ready` or `GET /api/v1/ready`: dependency readiness for DB, Redis, and MinIO.
+- `GET /ready` or `GET /api/v1/ready`: dependency readiness for DB, GCS storage,
+  and Pub/Sub.
   Returns HTTP `503` when any dependency is unavailable.
 - `GET /metrics`: Prometheus text format metrics for API and judge operation.
 
@@ -14,23 +15,24 @@ Prometheus metrics, structured JSON logs, and a pre-provisioned Grafana dashboar
 
 Important custom metrics:
 
-- `oj_queue_length`: number of submissions waiting in the RQ judge queue.
+- `oj_queue_length`: number of unacknowledged messages in the Pub/Sub judge subscription backlog.
 - `oj_judge_success_total`: judge jobs that completed and persisted a result.
 - `oj_judge_failure_total`: judge jobs that failed with a system error.
 - `oj_judge_average_seconds`: average wall-clock judge time.
 - `oj_worker_heartbeat_unixtime`: latest worker heartbeat timestamp.
 - `oj_stuck_submissions_marked_total`: submissions automatically marked failed after
   being stuck in `judging`.
-- `oj_readiness_dependency_up{dependency="db|redis|storage"}`: dependency status.
+- `oj_readiness_dependency_up{dependency="db|storage|pubsub"}`: dependency status.
 
-The judge worker stores worker metrics in Redis. The API reads those values and exports
-them from `/metrics`, so Prometheus only needs to scrape the API container.
+The judge worker reports heartbeat and judge results to internal API endpoints. The API
+stores those values in Postgres and exports them from `/metrics`, so Prometheus only
+needs to scrape the API container. Queue length is read from the GCP Pub/Sub
+subscription backlog through Cloud Monitoring.
 
 ## Structured Logging
 
 The API and worker use `structlog` JSON logs. Useful events:
 
-- `minio.bucket.ready`: storage bucket is reachable during API startup.
 - `admin.seed.done`: startup admin seed completed.
 - `judge.started`: worker started judging a submission.
 - `judge.completed`: worker persisted the final verdict.
@@ -73,7 +75,7 @@ The dashboard is provisioned automatically under `OJ / OJ Observability`. It sho
 - queue length
 - average judge time
 - worker heartbeat age
-- DB / Redis / Storage readiness
+- DB / GCS / Pub/Sub readiness
 - judge success/failure/stuck counters
 - judge throughput
 
@@ -86,7 +88,7 @@ When a stuck submission is found:
 
 1. A generic `System Error` judge result is created if one does not already exist.
 2. The submission status is changed to `failed`.
-3. `oj_stuck_submissions_marked_total` is incremented.
+3. `oj_stuck_submissions_marked_total` reflects the new `System Error` result.
 4. A `judge.stuck_submissions.marked` warning log is emitted.
 
 The user-facing error remains generic. Internal exception details stay in server logs.
@@ -104,7 +106,7 @@ The user-facing error remains generic. Internal exception details stay in server
 ## How To Detect Instability
 
 - API is alive but not usable: `/health` returns `200`, but `/ready` returns `503`.
-- DB / Redis / Storage issue: `oj_readiness_dependency_up` drops to `0`.
+- DB / GCS / Pub/Sub issue: `oj_readiness_dependency_up` drops to `0`.
 - Worker stopped: `time() - oj_worker_heartbeat_unixtime` keeps increasing.
 - Judge backlog: `oj_queue_length` stays high or grows continuously.
 - Judge regression: `oj_judge_average_seconds` rises after a code or infra change.

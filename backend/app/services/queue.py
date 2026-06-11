@@ -3,7 +3,6 @@ import json
 from google.cloud import pubsub_v1
 
 from app.config import settings
-from lib.observability import increment_queue_length
 
 _publisher: pubsub_v1.PublisherClient | None = None
 
@@ -21,7 +20,6 @@ def enqueue_submission(message: dict) -> None:
         json.dumps(message).encode(),
     )
     future.result()
-    increment_queue_length()
 
 
 def enqueue_custom_run(message: dict) -> None:
